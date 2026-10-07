@@ -1,0 +1,43 @@
+# citeguard configuration — every tunable lives here.
+seed: 42
+
+data:
+  dir: data
+  url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/fiqa.zip
+  sample_size: 5000          # docs in sample mode (relevant docs for eval/dev queries are always kept)
+  n_eval_queries: 200        # test queries used in retriever comparison
+  n_dev_queries: 100         # dev queries used for tuning (never test)
+
+text:
+  lowercase: true
+  remove_stopwords: true
+  stem: true
+
+index:
+  dir: data/index
+  champion_r: 200            # top-r docs per term (by tf) in champion lists
+
+retrieval:
+  top_k: 100                 # depth retrieved for evaluation
+  w_title: 0.3               # zone weights: score = w_title*title + w_body*body
+  w_body: 0.7
+  bm25_k1: 1.2
+  bm25_b: 0.75
+  rrf_k: 60
+
+dense:
+  model: sentence-transformers/all-MiniLM-L6-v2
+  batch_size: 128
+
+generation:
+  n_chunks: 5
+  max_tokens: 600
+  temperature: 0.0
+
+citeguard:
+  alpha: 0.5                 # support = alpha*cosine + (1-alpha)*coverage
+  threshold: 0.35            # tuned on dev split by src.eval tune
+  nli_model: cross-encoder/nli-deberta-v3-small
+  nli_threshold: 0.5
+  corruption_rate: 0.3
+  n_corruption_queries: 40
