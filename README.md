@@ -47,6 +47,8 @@ make test                       # unit tests (toy corpus, hand-verified scores)
 | verify with NLI instead | add `--nli` |
 | two-stage: lexical, then NLI on surviving claims | add `--two-stage` (claims NLI does not confirm become UNVERIFIED) |
 | inspect postings / df / idf | `python -m src.cli postings "dividend tax" --full` |
+| watch re-attribution | `python -m src.cli reattribute` (injects a wrong citation into a cached answer; CiteGuard repairs it, no API call) |
+| demo video driver | `./demo.sh warm`, then `./demo.sh` (7 segments, Enter between them; `./demo.sh 4` starts at segment 4) |
 | retriever comparison | `make eval-retrievers` (`FULL=` for the 5k sample; add `--n-queries 648` to `src.eval retrievers` for all test queries) |
 | stemming / stop-word ablation | `make eval-ablation` |
 | tune zone weights on dev | `make eval-zones` |
@@ -232,7 +234,7 @@ chunk that never mentions it. It was marked UNVERIFIED (NLI 0.004, missing ancho
 ## What works / what's planned
 
 Works: everything in the pipeline above, end to end in the CLI and the Streamlit page; all experiments
-write CSV + PNG to `results/`; 44 unit tests, including lnc.ltc and BM25 scores on a toy corpus checked against
+write CSV + PNG to `results/`; 47 unit tests, including lnc.ltc and BM25 scores on a toy corpus checked against
 hand calculation (`tests/test_sparse.py`).
 
 Planned / not done yet:

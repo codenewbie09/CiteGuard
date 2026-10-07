@@ -2,6 +2,7 @@
 
     python -m src.cli ask "Is a Roth IRA better than a 401k?" --retriever bm25 --show-postings --show-scores
     python -m src.cli postings "dividend tax"
+    python -m src.cli reattribute        # inject a wrong citation into a cached answer; watch CiteGuard repair it
 """
 from __future__ import annotations
 
@@ -66,6 +67,73 @@ def show_verdicts(ans) -> None:
                   f"({sum(v.status in (SUPPORTED, REATTRIBUTED) for v in ans.report.sentences)}/{len(ans.report.sentences)} sentences supported)")
 
 
+def repairable_swaps(answers, guard):
+    """Yield (answer index, sentence index, wrong chunk, support jump) for every swap where the
+    original citation is SUPPORTED and the swapped one is re-attributed back to it."""
+    for a, ans in enumerate(answers):
+        chunks = ans["chunks"]
+        for i, (sentence, cited) in enumerate(ans["pairs"]):
+            if cited is None or not 1 <= cited <= len(chunks):
+                continue
+            if guard.check([(sentence, cited)], chunks).sentences[0].status != SUPPORTED:
+                continue
+            for wrong in range(1, len(chunks) + 1):
+                if wrong == cited:
+                    continue
+                v = guard.check([(sentence, wrong)], chunks).sentences[0]
+                if v.status == REATTRIBUTED and v.final == cited:
+                    yield a, i, wrong, v.score - v.cited_score
+
+
+def find_repairable_swap(answers, guard):
+    """First repairable swap (answer, sentence, wrong chunk), or None. Deterministic."""
+    return next(((a, i, w) for a, i, w, _ in repairable_swaps(answers, guard)), None)
+
+
+def clearest_swap(answers, guard):
+    """The repairable swap with the largest support jump: the easiest one to read in a demo."""
+    best = max(repairable_swaps(answers, guard), key=lambda x: (x[3], -x[0], -x[1], -x[2]), default=None)
+    return best[:3] if best else None
+
+
+def reattribute_demo() -> None:
+    """Re-attribution is rare on real answers, so show it on a controlled, labelled injection:
+    a cached test answer (results/answers_test.json) with one citation deliberately swapped."""
+    import json
+    from types import SimpleNamespace
+
+    from src.build import get_index
+    from src.citeguard import CiteGuard, LexicalScorer
+    from src.config import load_config, path
+
+    cfg = load_config()
+    c, r = cfg["citeguard"], cfg["retrieval"]
+    idx = get_index(cfg, True)
+    guard = CiteGuard(LexicalScorer(idx, c["alpha"], c["beta"]), idx, c["threshold"], r["bm25_k1"], r["bm25_b"])
+    answers = json.loads(path("results/answers_test.json").read_text())
+    found = clearest_swap(answers, guard)
+    if found is None:
+        console.print("[red]no repairable swap found in the cached answers[/]")
+        return
+    a, i, wrong = found
+    ans = answers[a]
+    pairs = [tuple(p) for p in ans["pairs"]]
+    original = pairs[i][1]
+    pairs[i] = (pairs[i][0], wrong)
+    console.print(Panel(f"Cached answer to [bold]{escape(ans['question'])}[/]\n"
+                        f"[red]Injected error:[/] sentence {i + 1} originally cited [{original}]; "
+                        f"its citation was swapped to [{wrong}].", title="controlled re-attribution demo"))
+    t = Table(title="retrieved chunks", show_lines=True)
+    t.add_column("#", justify="right")
+    t.add_column("text")
+    for n, chunk in enumerate(ans["chunks"], 1):
+        mark = " [green](true source)[/]" if n == original else " [red](wrongly cited)[/]" if n == wrong else ""
+        t.add_row(str(n), escape(textwrap.shorten(chunk, 200)) + mark)
+    console.print(t)
+    raw = " ".join(f"{s} [{n}]" for s, n in pairs)
+    show_verdicts(SimpleNamespace(raw=raw, pairs=pairs, report=guard.check(pairs, ans["chunks"])))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -81,7 +149,12 @@ def main():
     p = sub.add_parser("postings", help="pretty-print postings and df/idf for query words")
     p.add_argument("words")
     p.add_argument("--full", action="store_true")
+    sub.add_parser("reattribute", help="inject a wrong citation into a cached answer and let CiteGuard repair it")
     args = ap.parse_args()
+
+    if args.cmd == "reattribute":
+        reattribute_demo()
+        return
 
     if args.cmd == "postings":
         from src.build import get_index
