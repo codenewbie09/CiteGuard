@@ -47,19 +47,28 @@ class DenseRetriever:
 
 
 class HybridRetriever:
-    """Reciprocal Rank Fusion: score(d) = Σ_r 1 / (k + rank_r(d)), ranks starting at 1."""
+    """Weighted Reciprocal Rank Fusion: score(d) = Σ_r w_r / (k + rank_r(d)), ranks from 1.
+    Equal weights give plain RRF (Cormack et al., 2009)."""
     name = "hybrid"
 
-    def __init__(self, retrievers, k: int = 60, depth: int = 100):
-        self.retrievers, self.k, self.depth = retrievers, k, depth
+    def __init__(self, retrievers, k: int = 60, depth: int = 100, weights: list[float] | None = None,
+                 name: str = "hybrid"):
+        self.retrievers, self.k, self.depth, self.name = retrievers, k, depth, name
+        self.weights = weights or [1.0] * len(retrievers)
+
+    @staticmethod
+    def fuse(runs: list[list[str]], k: int, weights: list[float]) -> list[tuple[str, float]]:
+        """Fuse ranked doc-id lists; returns (doc_id, score) best first (ties by doc id)."""
+        fused: dict[str, float] = defaultdict(float)
+        for run, w in zip(runs, weights):
+            for rank, d in enumerate(run, 1):
+                fused[d] += w / (k + rank)
+        return sorted(fused.items(), key=lambda x: (-x[1], x[0]))
 
     def search(self, query: str, k: int = 10, explain: bool = False) -> list[Hit]:
-        fused: dict[str, float] = defaultdict(float)
-        parts: dict[str, dict[str, float]] = defaultdict(dict)
-        for r in self.retrievers:
-            for rank, h in enumerate(r.search(query, k=max(k, self.depth)), 1):
-                s = 1 / (self.k + rank)
-                fused[h.doc_id] += s
-                parts[h.doc_id][r.name] = s
-        ranked = sorted(fused.items(), key=lambda x: (-x[1], x[0]))[:k]
-        return [Hit(d, s, parts[d] if explain else {}) for d, s in ranked]
+        runs = [[h.doc_id for h in r.search(query, k=max(k, self.depth))] for r in self.retrievers]
+        ranked = self.fuse(runs, self.k, self.weights)[:k]
+        if not explain:
+            return [Hit(d, s) for d, s in ranked]
+        parts = [{d: w / (self.k + i) for i, d in enumerate(run, 1)} for run, w in zip(runs, self.weights)]
+        return [Hit(d, s, {r.name: p[d] for r, p in zip(self.retrievers, parts) if d in p}) for d, s in ranked]

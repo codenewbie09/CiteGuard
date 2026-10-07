@@ -24,3 +24,10 @@ def test_ndcg():
     dcg = 1 / math.log2(2) + 1 / math.log2(4)
     idcg = 1 / math.log2(2) + 1 / math.log2(3) + 1 / math.log2(4)
     assert ndcg_at_k(RANKED, QRELS, 10) == pytest.approx(dcg / idcg)
+
+
+def test_paired_randomization():
+    from src.metrics import paired_randomization
+
+    assert paired_randomization([1.0] * 30, [0.0] * 30) < 0.01      # consistent win
+    assert paired_randomization([1, 0] * 15, [0, 1] * 15) == 1.0    # no mean difference

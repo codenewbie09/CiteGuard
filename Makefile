@@ -1,7 +1,7 @@
 PY := .venv/bin/python
 FULL ?= --full          # `make eval FULL=` runs everything on the 5k-doc sample instead
 
-.PHONY: setup data build-index test eval eval-retrievers eval-ablation eval-zones eval-citeguard labels agreement demo app
+.PHONY: setup data build-index test eval eval-retrievers eval-ablation eval-zones eval-rrf eval-citeguard labels agreement demo app
 
 setup:                  ## create the venv and install dependencies
 	uv venv --python 3.11 .venv
@@ -17,14 +17,16 @@ build-index: data       ## build sample + full inverted indexes, print stats
 test:
 	$(PY) -m pytest -q
 
-eval: eval-retrievers eval-ablation eval-zones eval-citeguard
+eval: eval-zones eval-rrf eval-retrievers eval-ablation eval-citeguard
 
 eval-retrievers:
-	$(PY) -m src.eval retrievers $(FULL) --only tfidf tfidf+zones tfidf+champions bm25 dense hybrid
+	$(PY) -m src.eval retrievers $(FULL) --only tfidf tfidf+zones tfidf+champions bm25 dense hybrid-equal hybrid
 eval-ablation:
 	$(PY) -m src.eval ablation $(FULL)
 eval-zones:
 	$(PY) -m src.eval zones $(FULL)
+eval-rrf:
+	$(PY) -m src.eval rrf $(FULL)
 eval-citeguard:         ## uses cached answers in results/ if present (no API key needed)
 	$(PY) -m src.eval citeguard $(FULL)
 

@@ -3,6 +3,7 @@
     python -m src.eval retrievers [--full] [--only bm25 tfidf ...]
     python -m src.eval ablation   [--full]
     python -m src.eval zones      [--full]     # tune w_title on the dev split
+    python -m src.eval rrf        [--full]     # tune weighted-RRF w_dense and k on the dev split
     python -m src.eval citeguard  [--full]     # corruption test; tunes alpha/threshold on dev
     python -m src.eval labels                  # dump answers for manual labelling
     python -m src.eval agreement               # agreement once labels are filled in
@@ -26,7 +27,7 @@ from src.build import get_index
 from src.citeguard import SUPPORTED, CiteGuard, LexicalScorer, NLIScorer
 from src.config import load_config, path
 from src.data import load_qrels, load_queries, query_sample
-from src.metrics import mrr_at_k, ndcg_at_k, precision_at_k, recall_at_k
+from src.metrics import mrr_at_k, ndcg_at_k, paired_randomization, precision_at_k, recall_at_k
 from src.retrievers import ALL, SPARSE, make_retriever
 from src.text import TextProcessor
 
@@ -40,8 +41,9 @@ def results_dir():
     return d
 
 
-def evaluate(retriever, queries: dict[str, str], qrels: dict, depth: int = 100) -> dict:
-    """Mean metrics and mean latency (ms) of one retriever over the query set."""
+def evaluate(retriever, queries: dict[str, str], qrels: dict, depth: int = 100, per_query: list | None = None) -> dict:
+    """Mean metrics and mean latency (ms) of one retriever over the query set.
+    If `per_query` is a list, the per-query metric rows are appended to it."""
     rows, lat = [], []
     for qid, text in queries.items():
         t0 = time.perf_counter()
@@ -53,6 +55,8 @@ def evaluate(retriever, queries: dict[str, str], qrels: dict, depth: int = 100) 
             "Recall@100": recall_at_k(ranked, rel, 100), "nDCG@10": ndcg_at_k(ranked, rel, 10),
             "MRR@10": mrr_at_k(ranked, rel, 10),
         })
+    if per_query is not None:
+        per_query.extend(rows)
     out = pd.DataFrame(rows).mean().to_dict()
     out["latency_ms"] = sum(lat) / len(lat)
     return out
@@ -89,17 +93,38 @@ def run_retrievers(cfg, full: bool, names: list[str]) -> pd.DataFrame:
     queries, qrels = eval_queries(cfg)
     idx = get_index(cfg, full)
     mode = "full" if full else "sample"
-    rows = {}
+    rows, per_query = {}, {}
     for name in names:
         console.print(f"[bold]{name}[/] on {len(queries)} test queries ({mode}, N={idx.N:,})")
-        rows[name] = evaluate(make_retriever(name, cfg, idx, full), queries, qrels, cfg["retrieval"]["top_k"])
+        per_query[name] = []
+        rows[name] = evaluate(make_retriever(name, cfg, idx, full), queries, qrels,
+                              cfg["retrieval"]["top_k"], per_query[name])
     df = pd.DataFrame(rows).T
     df.index.name = "retriever"
     df.to_csv(results_dir() / f"retrievers_{mode}.csv", float_format="%.4f")
     bar_chart(df, f"FiQA test ({len(queries)} queries, {mode} corpus, N={idx.N:,})",
               results_dir() / f"retrievers_{mode}.png")
     show(df, f"retriever comparison — {mode}")
+    significance(per_query, mode)
     return df
+
+
+def significance(per_query: dict[str, list[dict]], mode: str) -> None:
+    """Paired randomisation tests of each hybrid against its best component (dense)."""
+    pairs = [(h, "dense") for h in ("hybrid", "hybrid-equal") if h in per_query and "dense" in per_query]
+    if not pairs:
+        return
+    rows = []
+    for a, b in pairs:
+        for m in ("nDCG@10", "MRR@10", "P@10", "Recall@100"):
+            x, y = [r[m] for r in per_query[a]], [r[m] for r in per_query[b]]
+            d = [i - j for i, j in zip(x, y)]
+            rows.append({"comparison": f"{a} vs {b}", "metric": m, "mean_diff": sum(d) / len(d),
+                         "wins": sum(v > 0 for v in d), "ties": sum(v == 0 for v in d),
+                         "losses": sum(v < 0 for v in d), "p_value": paired_randomization(x, y)})
+    df = pd.DataFrame(rows).set_index("comparison")
+    df.to_csv(results_dir() / f"significance_{mode}.csv", float_format="%.4f")
+    show(df, "paired randomisation tests (two-sided, 10k sign flips)")
 
 
 def run_ablation(cfg, full: bool) -> pd.DataFrame:
@@ -140,6 +165,39 @@ def run_zones(cfg, full: bool) -> pd.DataFrame:
     df.index.name = "zone weights (dev)"
     df.to_csv(results_dir() / f"zones_dev_{'full' if full else 'sample'}.csv", float_format="%.4f")
     show(df, "zone-weight tuning on dev")
+    return df
+
+
+def run_rrf(cfg, full: bool) -> pd.DataFrame:
+    """Tune weighted RRF (w_dense, k) on dev queries. Each base run is retrieved once and
+    fused in memory for every grid point."""
+    from src.dense import HybridRetriever
+
+    queries, qrels = eval_queries(cfg, "dev")
+    idx = get_index(cfg, full)
+    depth = cfg["retrieval"]["top_k"]
+    bases = [make_retriever(n, cfg, idx, full) for n in ("bm25", "dense")]
+    runs = {q: [[h.doc_id for h in r.search(t, k=depth)] for r in bases] for q, t in queries.items()}
+    rows = []
+    for k in cfg["experiment"]["rrf_k_grid"]:
+        for w in cfg["experiment"]["rrf_w_dense_grid"]:
+            ranked = {q: [d for d, _ in HybridRetriever.fuse(runs[q], k, [1 - w, w])[:depth]] for q in queries}
+            m = {name: sum(f(ranked[q], qrels[q], kk) for q in queries) / len(queries)
+                 for name, f, kk in [("nDCG@10", ndcg_at_k, 10), ("MRR@10", mrr_at_k, 10),
+                                     ("Recall@100", recall_at_k, 100), ("P@10", precision_at_k, 10)]}
+            rows.append({"k": k, "w_dense": w, **m})
+    for name, i in (("bm25 alone", 0), ("dense alone", 1)):
+        rel = [(runs[q][i], qrels[q]) for q in queries]
+        rows.append({"k": None, "w_dense": name, "nDCG@10": sum(ndcg_at_k(r, g, 10) for r, g in rel) / len(rel),
+                     "MRR@10": sum(mrr_at_k(r, g, 10) for r, g in rel) / len(rel),
+                     "Recall@100": sum(recall_at_k(r, g, 100) for r, g in rel) / len(rel),
+                     "P@10": sum(precision_at_k(r, g, 10) for r, g in rel) / len(rel)})
+    df = pd.DataFrame(rows)
+    df.to_csv(results_dir() / f"rrf_dev_{'full' if full else 'sample'}.csv", index=False, float_format="%.4f")
+    grid = df[df.k.notna()]
+    best = grid.loc[grid["nDCG@10"].idxmax()]
+    show(df.set_index("w_dense"), "weighted RRF tuning on dev")
+    console.print(f"[bold]best on dev:[/] k={int(best.k)}, w_dense={best.w_dense} (nDCG@10 {best['nDCG@10']:.4f})")
     return df
 
 
@@ -359,7 +417,7 @@ def agreement(cfg) -> dict:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("experiment", choices=["retrievers", "ablation", "zones", "citeguard", "labels", "agreement"])
+    ap.add_argument("experiment", choices=["retrievers", "ablation", "zones", "rrf", "citeguard", "labels", "agreement"])
     ap.add_argument("--full", action="store_true")
     ap.add_argument("--only", nargs="*", default=None)
     ap.add_argument("--no-nli", action="store_true", help="citeguard: skip the NLI checker")
@@ -372,6 +430,8 @@ def main():
         run_ablation(cfg, args.full)
     elif args.experiment == "zones":
         run_zones(cfg, args.full)
+    elif args.experiment == "rrf":
+        run_rrf(cfg, args.full)
     elif args.experiment == "citeguard":
         run_citeguard(cfg, args.full, nli=not args.no_nli)
     elif args.experiment == "labels":

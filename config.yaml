@@ -23,7 +23,8 @@ retrieval:
   w_body: 0.9
   bm25_k1: 1.2
   bm25_b: 0.75
-  rrf_k: 60
+  rrf_k: 10                  # dev-tuned by `src.eval rrf` (results/rrf_dev_full.csv)
+  rrf_w_dense: 0.6           # weighted RRF: w_dense for dense, 1 - w_dense for BM25 (dev-tuned; 0.5 = plain RRF)
 
 dense:
   model: sentence-transformers/all-MiniLM-L6-v2
@@ -47,4 +48,6 @@ experiment:
   n_dev_answers: 30          # dev answers for tuning alpha / thresholds
   alphas: [0.0, 0.25, 0.5, 0.75, 1.0]
   w_title_grid: [0.0, 0.1, 0.2, 0.3, 0.5]
+  rrf_w_dense_grid: [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
+  rrf_k_grid: [10, 30, 60, 100]
   n_label_answers: 20

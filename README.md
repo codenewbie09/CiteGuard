@@ -12,7 +12,7 @@ flowchart LR
     Q[question] --> TP[text pipeline<br/>src/text.py]
     TP --> SP[sparse: tf-idf lnc.ltc / BM25<br/>src/sparse.py over src/index.py]
     Q --> DE[dense: MiniLM + FAISS<br/>src/dense.py]
-    SP --> RRF[hybrid RRF k=60]
+    SP --> RRF[hybrid: weighted RRF<br/>dev-tuned k, w_dense]
     DE --> RRF
     RRF --> TOP[top-5 numbered chunks]
     TOP --> LLM[LLM, one citation per sentence<br/>src/generate.py]
@@ -44,6 +44,7 @@ make test                       # unit tests (toy corpus, hand-verified scores)
 | retriever comparison | `make eval-retrievers` (`FULL=` for the 5k sample) |
 | stemming / stop-word ablation | `make eval-ablation` |
 | tune zone weights on dev | `make eval-zones` |
+| tune weighted RRF on dev | `make eval-rrf` |
 | CiteGuard corruption test | `make eval-citeguard` |
 | manual labelling | `make labels`, fill `human_label` in `results/manual_labels.csv`, then `make agreement` |
 | web page | `make app` (bare Streamlit) |
@@ -78,7 +79,8 @@ FiQA has **no titles** (all 57,638 are empty), so the title zone holds each pass
 | tf-idf VSM, SMART lnc.ltc, cosine, term-at-a-time accumulators, heap top-K | `src/sparse.py` (`TfidfRetriever`) |
 | zone weighting `w_title·title + w_body·body` | `src/sparse.py` |
 | Okapi BM25 (k1=1.2, b=0.75) | `src/sparse.py` (`BM25Retriever`) |
-| dense retrieval, Reciprocal Rank Fusion | `src/dense.py` |
+| dense retrieval, (weighted) Reciprocal Rank Fusion | `src/dense.py` |
+| significance: paired randomisation test | `src/metrics.py`, `src/eval.py` (`significance`) |
 | P@k, Recall@k, nDCG@k, MRR@k | `src/metrics.py` |
 | CiteGuard support = α·tf-idf cosine + (1−α)·term coverage; BM25 re-attribution | `src/citeguard.py` |
 | experiments | `src/eval.py` |
@@ -100,14 +102,21 @@ Anything tuned (zone weight, α, thresholds) was tuned on the **dev** split only
 | tf-idf + zones (w_title=0.1) | 0.072 | 0.049 | 0.509 | 0.173 | 0.207 | 4.7 |
 | tf-idf + champion lists (r=200) | 0.056 | 0.040 | 0.411 | 0.154 | 0.168 | **0.33** |
 | BM25 (k1=1.2, b=0.75) | 0.102 | 0.064 | 0.564 | 0.241 | 0.277 | 5.3 |
-| dense (MiniLM-L6 + FAISS) | **0.154** | **0.095** | **0.725** | **0.376** | **0.446** | 9.3 |
-| hybrid (RRF k=60, BM25 + dense) | 0.140 | 0.094 | 0.709 | 0.352 | 0.397 | 20.1 |
+| dense (MiniLM-L6 + FAISS) | 0.154 | 0.095 | 0.725 | 0.376 | **0.446** | 12.2 |
+| hybrid, plain RRF (k=60, equal weights) | 0.140 | 0.094 | 0.709 | 0.352 | 0.397 | 20.4 |
+| hybrid, weighted RRF (k=10, w_dense=0.6, dev-tuned) | **0.163** | **0.102** | **0.729** | **0.386** | 0.439 | 21.0 |
 
 * **Sanity check:** our from-scratch BM25 scores nDCG@10 = 0.241, against the 0.236 reported for BM25 on FiQA in the BEIR paper.
 * BM25's length normalisation and saturating tf beat lnc.ltc by +0.07 nDCG@10.
 * Champion lists are **11.7× faster** than the full tf-idf scan but lose 0.10 Recall@100: the classic speed/quality trade-off.
 * Zones: the dev sweep (`results/zones_dev_full.csv`) picked w_title = 0.1 (+0.016 nDCG@10 on dev). On test it is neutral (MRR +0.013, nDCG ±0), as expected for a "title" that duplicates the body (ADR 0002).
-* Hybrid is *below* dense. Equal-weight RRF lets the much weaker BM25 run pull down the dense ranking. Weighted RRF is the obvious next step.
+* **Hybrid vs dense.** Plain RRF is *below* dense (nDCG@10 −0.024), because equal weights let the much weaker BM25 run
+  pull the dense ranking down. Weighted RRF, `score(d) = (1−w)/(k+rank_bm25) + w/(k+rank_dense)`, was tuned on 100 dev
+  queries (`results/rrf_dev_full.csv`: k=10, w_dense=0.6, dev nDCG@10 0.435 vs 0.388 for dense alone). On test it
+  beats dense on P@5, P@10, Recall@100 and nDCG@10 (+0.010), but trails on MRR@10 (−0.008). **None of these test
+  differences is significant.** In a paired randomisation test (`results/significance_full.csv`), nDCG@10 gives
+  p = 0.44 (49 wins, 103 ties, 48 losses) and P@10 gives p = 0.05. Honest reading: weighted fusion removes plain
+  RRF's penalty and is at least as good as dense, but 200 queries cannot separate the two.
 
 ### 2. Ablation — `results/ablation_full.{csv,png}`
 
@@ -123,7 +132,7 @@ changes quality, but makes queries **6× faster**, because stop words have the l
 
 ### 3. CiteGuard corruption test — `results/citeguard_*.{csv,png}`
 
-Answers were generated (Groq `openai/gpt-oss-120b`, hybrid top-5) for 30 dev and 40 test queries.
+Answers were generated (Groq `openai/gpt-oss-120b`, top-5 from plain-RRF hybrid; they are cached, so later retriever changes do not alter this experiment) for 30 dev and 40 test queries.
 Then 30% of citations were swapped to a different retrieved chunk at random (seeded), so we know
 exactly which citations are wrong. A checker *flags* a sentence when support(sentence, cited chunk) < τ.
 α and τ were tuned on dev (`citeguard_alpha_dev.csv`: best α = 0.75, τ = 0.18).
@@ -146,12 +155,12 @@ sentence can pass. The manual-labelling step (`make labels` → `make agreement`
 ## What works / what's planned
 
 Works: everything in the pipeline above, end to end in the CLI and the Streamlit page; all experiments
-write CSV + PNG to `results/`; 31 unit tests, including lnc.ltc and BM25 scores on a toy corpus checked against
+write CSV + PNG to `results/`; 34 unit tests, including lnc.ltc and BM25 scores on a toy corpus checked against
 hand calculation (`tests/test_sparse.py`).
 
 Planned / not done yet:
 * Manual labels: `results/manual_labels.csv` has 70 sentences from 20 real answers, ready to label. Agreement (accuracy, Cohen's κ) is computed by `make agreement`.
-* Weighted RRF, or tuning the RRF k on dev, so the hybrid at least matches dense.
+* More eval queries (all 648 test queries) to tell whether weighted hybrid really beats dense.
 * A sentence-level support score that also penalises unsupported numbers and entities (the main miss above).
 * BM25F over the zones, instead of applying zone weighting to tf-idf only.
 
