@@ -1,7 +1,7 @@
 PY := .venv/bin/python
 FULL ?= --full          # `make eval FULL=` runs everything on the 5k-doc sample instead
 
-.PHONY: setup data build-index test eval eval-retrievers eval-ablation eval-zones eval-rrf eval-citeguard labels agreement demo app
+.PHONY: setup data build-index test eval eval-retrievers eval-ablation eval-zones eval-rrf eval-citeguard labels agreement two-stage demo app
 
 setup:                  ## create the venv and install dependencies
 	uv venv --python 3.11 .venv
@@ -34,6 +34,8 @@ labels:
 	$(PY) -m src.eval labels $(FULL)
 agreement:
 	$(PY) -m src.eval agreement
+two-stage:              ## lexical stage 1 + NLI stage 2, evaluated on the manual labels
+	$(PY) -m src.eval two-stage
 
 demo:
 	$(PY) -m src.cli ask "Are Roth IRA withdrawals taxed?" --retriever hybrid --full --show-postings --show-scores

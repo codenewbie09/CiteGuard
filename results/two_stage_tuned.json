@@ -1,0 +1,15 @@
+{
+ "stage1": {
+  "alpha": 0.75,
+  "beta": 0.25,
+  "threshold": 0.18
+ },
+ "verify_threshold": 0.00631,
+ "cv_fold_thresholds": [
+  0.00631,
+  0.003981,
+  0.00631,
+  0.00631,
+  0.00631
+ ]
+}

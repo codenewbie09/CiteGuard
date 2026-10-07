@@ -1,0 +1,6 @@
+verifier (70 human-labelled sentences),caught,flagged,precision,recall,f1,f0.5,accuracy,cohen_kappa
+stage 1 only (lexical+anchors),0.0000,2.0000,0.0000,0.0000,0.0000,0.0000,0.8286,-0.0500
+NLI only (dev-tuned 0.01),6.0000,31.0000,0.1935,0.6000,0.2927,0.2239,0.5857,0.0978
+"two-stage, stage-2 τ dev-tuned (0.01)",6.0000,31.0000,0.1935,0.6000,0.2927,0.2239,0.5857,0.0978
+"two-stage, stage-2 τ by 5-fold CV",5.0000,25.0000,0.2000,0.5000,0.2857,0.2273,0.6429,0.1026
+"two-stage, τ=0.00631 fit on all labels (in-sample)",6.0000,27.0000,0.2222,0.6000,0.3243,0.2542,0.6429,0.1463

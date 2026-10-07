@@ -5,7 +5,14 @@ For each (sentence, cited chunk):
 where missing_anchors is the fraction of the sentence's numbers and named entities absent from the chunk.
 If support < threshold, the sentence is run as a BM25 query over the other retrieved chunks;
 if the best one passes the threshold the citation is re-attributed, otherwise the sentence is
-UNSUPPORTED. Trust = fraction of sentences that end up supported (SUPPORTED or REATTRIBUTED).
+UNSUPPORTED.
+
+Optional stage 2 (two-stage verification): every sentence that survives stage 1 is checked by an
+NLI verifier against its final chunk; if entailment < verify_threshold it becomes UNVERIFIED
+(the citation points at the right chunk, but the claim is not confirmed by it). Stage 1 is good
+at wrong chunks, stage 2 at unsupported claims inside the right chunk (README, results 3-5).
+
+Trust = fraction of sentences that end up SUPPORTED or REATTRIBUTED.
 
 Scorers are swappable: LexicalScorer (our IR pipeline) or NLIScorer (cross-encoder entailment).
 """
@@ -21,6 +28,7 @@ from src.sparse import bm25_idf, bm25_term
 from src.text import STOPWORDS, _stem
 
 SUPPORTED, REATTRIBUTED, UNSUPPORTED = "SUPPORTED", "REATTRIBUTED", "UNSUPPORTED"
+UNVERIFIED = "UNVERIFIED"
 
 
 @dataclass
@@ -56,9 +64,14 @@ def _norm_word(w: str) -> str:
     return w.lower() if w.isupper() else _stem(w.lower())
 
 
+def _fractions(text: str) -> str:
+    return text.replace("\u00bd", ".5").replace("\u00bc", ".25").replace("\u00be", ".75")
+
+
 def anchors(sentence: str) -> dict[str, set[str]]:
     """Numbers (digits or quantifying number words) and named entities (capitalised words that
     are not sentence-initial, or ALL-CAPS acronyms anywhere), normalised for matching."""
+    sentence = _fractions(sentence)
     numbers = {_norm_number(m) for m in NUM_RE.findall(sentence)}
     numbers |= {NUMBER_WORDS[m.lower()] for m in CLAIM_NUMWORD_RE.findall(sentence)}
     entities = set()
@@ -75,6 +88,7 @@ def anchors(sentence: str) -> dict[str, set[str]]:
 def chunk_vocabulary(chunk: str) -> tuple[set[str], set[str]]:
     """Everything a chunk can vouch for: its numbers (digits and any number word) and all its
     words in both acronym (lower) and stemmed form."""
+    chunk = _fractions(chunk)
     numbers = {_norm_number(m) for m in NUM_RE.findall(chunk)}
     numbers |= {NUMBER_WORDS[m.lower()] for m in ANY_NUMWORD_RE.findall(chunk)}
     words = set()
@@ -102,6 +116,7 @@ class Verdict:
     cited_score: float         # support of the originally cited chunk
     terms: dict[str, float] = field(default_factory=dict)
     missing: list[str] = field(default_factory=list)
+    nli: float | None = None   # stage-2 entailment of the final chunk (None if stage 2 did not run)
 
 
 @dataclass
@@ -112,7 +127,7 @@ class Report:
     def trust(self) -> float:
         if not self.sentences:
             return 0.0
-        return sum(v.status != UNSUPPORTED for v in self.sentences) / len(self.sentences)
+        return sum(v.status in (SUPPORTED, REATTRIBUTED) for v in self.sentences) / len(self.sentences)
 
 
 class LexicalScorer:
@@ -170,9 +185,11 @@ class NLIScorer:
 
 
 class CiteGuard:
-    def __init__(self, scorer, index: InvertedIndex, threshold: float, k1: float = 1.2, b: float = 0.75):
+    def __init__(self, scorer, index: InvertedIndex, threshold: float, k1: float = 1.2, b: float = 0.75,
+                 verifier=None, verify_threshold: float = 0.5):
         self.scorer, self.index, self.threshold = scorer, index, threshold
         self.k1, self.b = k1, b
+        self.verifier, self.verify_threshold = verifier, verify_threshold   # stage 2 (NLIScorer-like)
 
     def best_alternative(self, sentence: str, chunks: list[str], exclude: int | None) -> int | None:
         """BM25 over the retrieved chunks (minus the cited one), with corpus idf and avgdl.
@@ -207,4 +224,15 @@ class CiteGuard:
                                         alt_sup.missing))
             else:
                 verdicts.append(Verdict(sentence, cited, None, UNSUPPORTED, sup.score, sup.score, sup.terms, sup.missing))
+        if self.verifier is not None:
+            self._verify(verdicts, chunks)
         return Report(verdicts)
+
+    def _verify(self, verdicts: list[Verdict], chunks: list[str]) -> None:
+        """Stage 2: one batched NLI call over every sentence that passed stage 1."""
+        todo = [v for v in verdicts if v.status in (SUPPORTED, REATTRIBUTED)]
+        probs = self.verifier.scores([(v.sentence, chunks[v.final - 1]) for v in todo])
+        for v, p in zip(todo, probs):
+            v.nli = p
+            if p < self.verify_threshold:
+                v.status = UNVERIFIED

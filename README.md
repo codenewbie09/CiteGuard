@@ -22,8 +22,11 @@ flowchart LR
     CG -- no --> BM["BM25 over the other chunks"]
     BM -- best passes --> R["REATTRIBUTED: old to new"]
     BM -- none passes --> U["UNSUPPORTED"]
-    S --> T["trust = supported fraction"]
-    R --> T
+    S --> NLI{"optional stage 2: NLI<br/>entailed by final chunk?"}
+    R --> NLI
+    NLI -- yes --> T["trust = SUPPORTED + REATTRIBUTED fraction"]
+    NLI -- no --> V["UNVERIFIED"]
+    V --> T
     U --> T
 ```
 
@@ -42,6 +45,7 @@ make test                       # unit tests (toy corpus, hand-verified scores)
 |---|---|
 | ask a question | `python -m src.cli ask "Are Roth IRA withdrawals taxed?" --retriever hybrid --full --show-postings --show-scores` |
 | verify with NLI instead | add `--nli` |
+| two-stage: lexical, then NLI on surviving claims | add `--two-stage` (claims NLI does not confirm become UNVERIFIED) |
 | inspect postings / df / idf | `python -m src.cli postings "dividend tax" --full` |
 | retriever comparison | `make eval-retrievers` (`FULL=` for the 5k sample; add `--n-queries 648` to `src.eval retrievers` for all test queries) |
 | stemming / stop-word ablation | `make eval-ablation` |
@@ -49,6 +53,7 @@ make test                       # unit tests (toy corpus, hand-verified scores)
 | tune weighted RRF on dev | `make eval-rrf` |
 | CiteGuard corruption test | `make eval-citeguard` |
 | manual labelling | `make labels`, fill `human_label` in `results/manual_labels.csv`, then `make agreement` |
+| two-stage evaluation | `make two-stage` |
 | web page | `make app` (bare Streamlit) |
 
 **Sample vs full mode.** Every command defaults to a 5,000-document sample for fast iteration
@@ -194,17 +199,45 @@ with its dev-tuned settings from the corruption experiment.
   ("…can result in the loan application being denied", "…would then be treated as taxable income") that reuse
   the chunk's vocabulary. NLI catches 6/10, but flags 31 of 70 sentences to do it.
 
-A two-stage design follows from this: use the lexical checker to fix citations, then NLI to warn about claims.
+This motivated the two-stage verifier in section 5.
 Caveats: 70 sentences, 10 positives, one annotator.
+
+### 5. Two-stage verification — `results/two_stage_*.{csv,png,json}`
+
+Stage 1 is the lexical+anchors checker with re-attribution. Stage 2 runs NLI on every sentence that survives
+stage 1, against its *final* chunk; a sentence whose entailment is below τ₂ becomes **UNVERIFIED**.
+The dev corruption set has no examples of unsupported claims inside the right chunk, so τ₂ is chosen to maximise
+F0.5 (weighting precision) under **5-fold stratified cross-validation** on the 70 labels. The fold thresholds
+were 0.0063, 0.0040, 0.0063, 0.0063, 0.0063, so the deployed τ₂ = 0.0063.
+
+| verifier (70 labelled sentences, 10 unsupported) | caught | flagged | precision | recall | F0.5 | κ |
+|---|---|---|---|---|---|---|
+| stage 1 only | 0 | 2 | 0.00 | 0.00 | 0.00 | −0.05 |
+| NLI only (dev-tuned τ = 0.01) | 6 | 31 | 0.19 | 0.60 | 0.22 | 0.10 |
+| two-stage, τ₂ dev-tuned (0.01), fully held out | 6 | 31 | 0.19 | 0.60 | 0.22 | 0.10 |
+| **two-stage, τ₂ by 5-fold CV** (honest estimate) | 5 | 25 | 0.20 | 0.50 | 0.23 | 0.10 |
+| two-stage, τ₂ fit on all 70 (in-sample, optimistic) | 6 | 27 | 0.22 | 0.60 | 0.25 | 0.15 |
+
+On the corruption test (`two_stage_corruption.csv`), adding stage 2 raises recall on swapped citations
+(0.69 → 0.84) but halves precision (0.88 → 0.52; F1 0.77 → 0.65). It flags 82 of 152 sentences.
+
+**Honest reading.** Two-stage makes CiteGuard able to catch real unsupported claims at all: stage 1 alone
+catches none. But the small NLI model is a weak judge here. Its precision (0.20) is barely above the 0.14 base
+rate, and its agreement with the human labels is only slight (κ ≈ 0.10). The main suspect is the premise:
+FiQA chunks are long and get truncated at 512 tokens, and the model judges the whole chunk at once rather than the
+sentence that actually matters. So two-stage is off by default (`--two-stage` turns it on), and UNVERIFIED should read as
+"check this", not "false". Example from the CLI: "…once the account has satisfied the five-year rule…" was cited to a
+chunk that never mentions it. It was marked UNVERIFIED (NLI 0.004, missing anchor `5`).
 
 ## What works / what's planned
 
 Works: everything in the pipeline above, end to end in the CLI and the Streamlit page; all experiments
-write CSV + PNG to `results/`; 38 unit tests, including lnc.ltc and BM25 scores on a toy corpus checked against
+write CSV + PNG to `results/`; 44 unit tests, including lnc.ltc and BM25 scores on a toy corpus checked against
 hand calculation (`tests/test_sparse.py`).
 
 Planned / not done yet:
-* Two-stage verification: lexical check + re-attribution first, then NLI on the re-attributed chunk, with the NLI threshold tuned for precision.
+* Sentence-window NLI premises: take the max entailment over 1–3-sentence windows of the chunk instead of the truncated whole chunk. This is the likely fix for stage 2's low precision.
+* A larger NLI model (e.g. deberta-v3-base/large) for stage 2.
 * More labelled sentences and a second annotator (inter-annotator κ) before trusting the agreement numbers.
 * BM25F over the zones, instead of applying zone weighting to tf-idf only.
 

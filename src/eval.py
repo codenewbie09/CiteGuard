@@ -7,6 +7,7 @@
     python -m src.eval citeguard  [--full]     # corruption test; tunes alpha/threshold on dev
     python -m src.eval labels                  # dump answers for manual labelling
     python -m src.eval agreement               # agreement once labels are filled in
+    python -m src.eval two-stage               # lexical stage 1 + NLI stage 2 on the labels (5-fold CV)
 """
 from __future__ import annotations
 
@@ -226,6 +227,24 @@ def prf(pred: list[bool], truth: list[bool]) -> tuple[float, float, float]:
     rec = tp / (tp + fn) if tp + fn else 0.0
     f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0
     return prec, rec, f1
+
+
+def fbeta(p: float, r: float, beta: float = 0.5) -> float:
+    """F-beta; beta < 1 weights precision more (stage 2 should not cry wolf)."""
+    b2 = beta * beta
+    return (1 + b2) * p * r / (b2 * p + r) if p + r else 0.0
+
+
+def stratified_folds(labels: list[bool], k: int, seed: int) -> list[list[int]]:
+    """k folds with positives and negatives spread evenly; deterministic for a seed."""
+    rng = random.Random(seed)
+    folds: list[list[int]] = [[] for _ in range(k)]
+    for cls in (True, False):
+        idx = [i for i, y in enumerate(labels) if y == cls]
+        rng.shuffle(idx)
+        for j, i in enumerate(idx):
+            folds[j % k].append(i)
+    return [sorted(f) for f in folds]
 
 
 def generate_answers(cfg, split: str, n: int, full: bool, rag=None) -> list[dict]:
@@ -451,9 +470,107 @@ def agreement(cfg, nli: bool = True) -> pd.DataFrame:
     return out
 
 
+def label_metrics(human: list[bool], machine: list[bool]) -> dict:
+    """Agreement of machine 'supported' with human 'supported'; positives = unsupported."""
+    n = len(human)
+    po = sum(h == m for h, m in zip(human, machine)) / n
+    ph, pm = sum(human) / n, sum(machine) / n
+    pe = ph * pm + (1 - ph) * (1 - pm)
+    p, r, f = prf([not m for m in machine], [not h for h in human])
+    return {"caught": sum((not m) and (not h) for h, m in zip(human, machine)), "flagged": sum(not m for m in machine),
+            "precision": p, "recall": r, "f1": f, "f0.5": fbeta(p, r), "accuracy": po,
+            "cohen_kappa": (po - pe) / (1 - pe) if pe < 1 else 1.0}
+
+
+NLI_GRID = sorted({round(10 ** (e / 10), 6) for e in range(-40, 1)} | {0.5})   # 1e-4 … 1, log-spaced
+
+
+def best_nli_threshold(stage1_ok, nli, human, idx) -> float:
+    """Stage-2 threshold maximising F0.5 (precision-weighted) on the given label indices."""
+    def score(t):
+        m = [stage1_ok[i] and nli[i] >= t for i in idx]
+        return label_metrics([human[i] for i in idx], m)["f0.5"]
+    return max(NLI_GRID, key=lambda t: (score(t), -t))   # ties → lower threshold (fewer flags)
+
+
+def run_two_stage(cfg) -> pd.DataFrame:
+    """Two-stage verification on the human labels. Stage 1: lexical+anchors with dev-tuned settings.
+    Stage 2's threshold has no dev data for this task, so it is estimated by 5-fold stratified CV on
+    the labels (honest), alongside the dev-tuned NLI threshold (fully held out)."""
+    df = pd.read_csv(results_dir() / LABELS)
+    df = df[df.human_label.notna()]
+    human = df.human_label.astype(int).astype(bool).tolist()
+    tuned = json.loads((results_dir() / "citeguard_tuned.json").read_text())
+    lx, nl = tuned["lexical+anchors"], tuned["nli"]
+    pairs = [(s, ch if isinstance(ch, str) else "") for s, ch in zip(df.sentence, df.cited_chunk)]
+    idx = get_index(cfg, True)
+    lex_scorer = LexicalScorer(idx, lx["alpha"], lx["beta"])
+    lex = [lex_scorer.score(s, ch).score for s, ch in pairs]
+    nli = NLIScorer(cfg["citeguard"]["nli_model"]).scores(pairs)
+    stage1 = [x >= lx["threshold"] for x in lex]
+    everything = list(range(len(human)))
+
+    # 5-fold CV: choose the threshold on 4 folds, predict the held-out fold
+    cv_pred, cv_thr = [None] * len(human), []
+    for fold in stratified_folds([not h for h in human], k=5, seed=cfg["seed"]):
+        train = [i for i in everything if i not in set(fold)]
+        t = best_nli_threshold(stage1, nli, human, train)
+        cv_thr.append(t)
+        for i in fold:
+            cv_pred[i] = stage1[i] and nli[i] >= t
+    deployed = best_nli_threshold(stage1, nli, human, everything)
+
+    rows = {
+        "stage 1 only (lexical+anchors)": label_metrics(human, stage1),
+        f"NLI only (dev-tuned {nl['threshold']})": label_metrics(human, [x >= nl["threshold"] for x in nli]),
+        f"two-stage, stage-2 τ dev-tuned ({nl['threshold']})": label_metrics(
+            human, [a and x >= nl["threshold"] for a, x in zip(stage1, nli)]),
+        "two-stage, stage-2 τ by 5-fold CV": label_metrics(human, cv_pred),
+        f"two-stage, τ={deployed} fit on all labels (in-sample)": label_metrics(
+            human, [a and x >= deployed for a, x in zip(stage1, nli)]),
+    }
+    out = pd.DataFrame(rows).T
+    out.index.name = "verifier (70 human-labelled sentences)"
+    out.to_csv(results_dir() / "two_stage_labels.csv", float_format="%.4f")
+    (results_dir() / "two_stage_tuned.json").write_text(json.dumps(
+        {"stage1": lx, "verify_threshold": deployed, "cv_fold_thresholds": cv_thr}, indent=1))
+    show(out, "two-stage verification vs human labels")
+    console.print(f"CV fold thresholds: {cv_thr}; deployed (all labels): {deployed}")
+
+    # threshold curve on the labels
+    curve = pd.DataFrame([{"threshold": t, **label_metrics(human, [a and x >= t for a, x in zip(stage1, nli)])}
+                          for t in NLI_GRID])
+    curve.to_csv(results_dir() / "two_stage_curve.csv", index=False, float_format="%.4f")
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    for m in ("precision", "recall", "f0.5"):
+        ax.plot(curve.threshold, curve[m], label=m)
+    ax.axvline(deployed, ls=":", color="grey")
+    ax.set_xscale("log")
+    ax.set_xlabel("stage-2 NLI entailment threshold (log scale)")
+    ax.set_ylabel("detecting human-unsupported sentences")
+    ax.set_title(f"Two-stage CiteGuard on {len(human)} labelled sentences ({len(human) - sum(human)} unsupported)")
+    ax.set_ylim(0, 1.05)
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(results_dir() / "two_stage_curve.png", dpi=150)
+    plt.close()
+
+    # does stage 2 hurt wrong-chunk detection? reuse the corruption test scores
+    ct = pd.read_csv(results_dir() / "citeguard_sentences_test.csv")
+    truth = ct.corrupted.tolist()
+    s1 = (ct["lexical+anchors_support"] < lx["threshold"]).tolist()
+    s2 = [a or x < deployed for a, x in zip(s1, ct["nli_support"])]
+    corr = pd.DataFrame({name: dict(zip(("precision", "recall", "f1"), prf(flags, truth)), flagged=sum(flags))
+                         for name, flags in (("stage 1 only", s1), (f"two-stage τ={deployed}", s2))}).T
+    corr.index.name = "corruption test (152 sentences, 51 swapped)"
+    corr.to_csv(results_dir() / "two_stage_corruption.csv", float_format="%.4f")
+    show(corr, "two-stage on the corruption test")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("experiment", choices=["retrievers", "ablation", "zones", "rrf", "citeguard", "labels", "agreement"])
+    ap.add_argument("experiment", choices=["retrievers", "ablation", "zones", "rrf", "citeguard", "labels", "agreement", "two-stage"])
     ap.add_argument("--full", action="store_true")
     ap.add_argument("--only", nargs="*", default=None)
     ap.add_argument("--n-queries", type=int, default=None,
@@ -478,6 +595,8 @@ def main():
         dump_labels(cfg, args.full, args.force)
     elif args.experiment == "agreement":
         agreement(cfg)
+    elif args.experiment == "two-stage":
+        run_two_stage(cfg)
 
 
 if __name__ == "__main__":

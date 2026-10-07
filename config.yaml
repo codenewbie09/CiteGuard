@@ -41,6 +41,7 @@ citeguard:
   threshold: 0.18            # dev-tuned by `src.eval citeguard`
   nli_model: cross-encoder/nli-deberta-v3-small
   nli_threshold: 0.01        # dev-tuned; entailment probs are tiny on long paraphrased chunks
+  verify_threshold: 0.0063   # stage-2 NLI threshold for --two-stage (results/two_stage_tuned.json; 5-fold CV on labels)
   corruption_rate: 0.3
   n_corruption_queries: 40
 

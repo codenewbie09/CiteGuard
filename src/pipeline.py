@@ -23,7 +23,8 @@ class Answer:
 
 
 class RAG:
-    def __init__(self, cfg: dict | None = None, full: bool = False, retriever: str = "bm25", nli: bool = False):
+    def __init__(self, cfg: dict | None = None, full: bool = False, retriever: str = "bm25", nli: bool = False,
+                 two_stage: bool = False):
         self.cfg = cfg or load_config()
         self.full = full
         self.index = get_index(self.cfg, full)
@@ -34,7 +35,9 @@ class RAG:
             scorer, thr = NLIScorer(c["nli_model"]), c["nli_threshold"]
         else:
             scorer, thr = LexicalScorer(self.index, c["alpha"], c.get("beta", 0.0)), c["threshold"]
-        self.guard = CiteGuard(scorer, self.index, thr, r["bm25_k1"], r["bm25_b"])
+        verifier = NLIScorer(c["nli_model"]) if two_stage and not nli else None
+        self.guard = CiteGuard(scorer, self.index, thr, r["bm25_k1"], r["bm25_b"],
+                               verifier=verifier, verify_threshold=c["verify_threshold"])
 
     def retrieve(self, question: str, k: int | None = None, explain: bool = False) -> list[Hit]:
         return self.retriever.search(question, k=k or self.cfg["generation"]["n_chunks"], explain=explain)
