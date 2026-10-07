@@ -9,20 +9,22 @@ IR course hackathon, Track T1 (RAG and trustworthy answers).
 
 ```mermaid
 flowchart LR
-    Q[question] --> TP[text pipeline<br/>src/text.py]
-    TP --> SP[sparse: tf-idf lnc.ltc / BM25<br/>src/sparse.py over src/index.py]
-    Q --> DE[dense: MiniLM + FAISS<br/>src/dense.py]
-    SP --> RRF[hybrid: weighted RRF<br/>dev-tuned k, w_dense]
+    Q["question"] --> TP["text pipeline<br/>src/text.py"]
+    TP --> SP["sparse: tf-idf lnc.ltc / BM25<br/>src/sparse.py + src/index.py"]
+    Q --> DE["dense: MiniLM + FAISS<br/>src/dense.py"]
+    SP --> RRF["hybrid: weighted RRF<br/>dev-tuned k, w_dense"]
     DE --> RRF
-    RRF --> TOP[top-5 numbered chunks]
-    TOP --> LLM[LLM, one citation per sentence<br/>src/generate.py]
-    LLM --> PARSE[(sentence, chunk) pairs]
-    PARSE --> CG{CiteGuard<br/>src/citeguard.py<br/>support ≥ τ?}
-    CG -- yes --> S[SUPPORTED]
-    CG -- no --> BM[BM25 over other chunks]
-    BM -- best passes τ --> R[REATTRIBUTED old→new]
-    BM -- none passes --> U[UNSUPPORTED]
-    S & R & U --> T[trust = supported fraction]
+    RRF --> TOP["top-5 numbered chunks"]
+    TOP --> LLM["LLM: one citation per sentence<br/>src/generate.py"]
+    LLM --> PARSE["sentence + cited chunk pairs"]
+    PARSE --> CG{"CiteGuard<br/>src/citeguard.py<br/>support >= threshold?"}
+    CG -- yes --> S["SUPPORTED"]
+    CG -- no --> BM["BM25 over the other chunks"]
+    BM -- best passes --> R["REATTRIBUTED: old to new"]
+    BM -- none passes --> U["UNSUPPORTED"]
+    S --> T["trust = supported fraction"]
+    R --> T
+    U --> T
 ```
 
 ## Setup
