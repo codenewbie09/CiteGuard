@@ -54,7 +54,7 @@ make test                       # unit tests (toy corpus, hand-verified scores)
 | CiteGuard corruption test | `make eval-citeguard` |
 | manual labelling | `make labels`, fill `human_label` in `results/manual_labels.csv`, then `make agreement` |
 | two-stage evaluation | `make two-stage` |
-| web page | `make app` (bare Streamlit) |
+| web page | `make app` → runs `app.py` (bare Streamlit page, opens at http://localhost:8501): pick a retriever, ask a question, see the trust score, colour-coded verdicts and retrieved chunks with scores. Uses the full-corpus index, so run `make build-index` first. |
 
 **Sample vs full mode.** Every command defaults to a 5,000-document sample for fast iteration
 (`--full` for the 57,638-document corpus). The sample keeps every judged document for the eval and
