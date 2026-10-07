@@ -1,3 +1,4 @@
-checker,alpha,threshold (dev-tuned),precision,recall,f1,corrupted,flagged,recovered_original,recovery_rate_of_flagged,recovery_rate_of_corrupted
-lexical,0.7500,0.1800,0.8718,0.6667,0.7556,51,34,25,0.7353,0.4902
-nli,,0.0100,0.4881,0.8039,0.6074,51,41,17,0.4146,0.3333
+checker,alpha,beta,threshold (dev-tuned),precision,recall,f1,corrupted,flagged,recovered_original,recovery_rate_of_flagged,recovery_rate_of_corrupted
+lexical,0.7500,0.0000,0.1800,0.8718,0.6667,0.7556,51,34,25,0.7353,0.4902
+lexical+anchors,0.7500,0.2500,0.1800,0.8750,0.6863,0.7692,51,35,26,0.7429,0.5098
+nli,,,0.0100,0.4881,0.8039,0.6074,51,41,17,0.4146,0.3333

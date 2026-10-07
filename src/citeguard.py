@@ -1,7 +1,8 @@
 """Module 6 — CiteGuard: verify every answer sentence against the chunk it cites.
 
 For each (sentence, cited chunk):
-  support = alpha · tfidf_cosine(sentence, chunk) + (1 − alpha) · term_coverage
+  support = [alpha · tfidf_cosine(sentence, chunk) + (1 − alpha) · term_coverage] · (1 − beta · missing_anchors)
+where missing_anchors is the fraction of the sentence's numbers and named entities absent from the chunk.
 If support < threshold, the sentence is run as a BM25 query over the other retrieved chunks;
 if the best one passes the threshold the citation is re-attributed, otherwise the sentence is
 UNSUPPORTED. Trust = fraction of sentences that end up supported (SUPPORTED or REATTRIBUTED).
@@ -11,11 +12,13 @@ Scorers are swappable: LexicalScorer (our IR pipeline) or NLIScorer (cross-encod
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 
 from src.index import InvertedIndex
 from src.sparse import bm25_idf, bm25_term
+from src.text import STOPWORDS, _stem
 
 SUPPORTED, REATTRIBUTED, UNSUPPORTED = "SUPPORTED", "REATTRIBUTED", "UNSUPPORTED"
 
@@ -26,6 +29,67 @@ class Support:
     cosine: float = 0.0
     coverage: float = 0.0
     terms: dict[str, float] = field(default_factory=dict)   # shared term → cosine contribution
+    missing: list[str] = field(default_factory=list)        # numbers/entities absent from the chunk
+
+
+# ---------- anchors: numbers and named entities a claim must not invent ----------
+NUMBER_WORDS = {w: str(i) for i, w in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve".split())} | {
+    "twenty": "20", "thirty": "30", "fifty": "50", "hundred": "100"}
+NUM_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
+# In a claim, a number word counts only when it quantifies ("three-month", "two years"),
+# so the pronoun "one" ("one should…") is not an anchor.
+CLAIM_NUMWORD_RE = re.compile(
+    r"\b(" + "|".join(NUMBER_WORDS) + r")(?=[-\u2010\u2011 ](?:year|month|week|day|percent|time|hundred|thousand|million|billion)s?\b|[-\u2010\u2011])",
+    re.I)
+ANY_NUMWORD_RE = re.compile(r"\b(" + "|".join(NUMBER_WORDS) + r")\b", re.I)
+WORD_RE = re.compile(r"[A-Za-z][A-Za-z'\u2019]*")
+
+
+def _norm_number(s: str) -> str:
+    s = s.rstrip(",").replace(",", "")
+    return s[:-2] if s.endswith(".0") else s
+
+
+def _norm_word(w: str) -> str:
+    w = re.sub(r"['\u2019]s?$", "", w)
+    return w.lower() if w.isupper() else _stem(w.lower())
+
+
+def anchors(sentence: str) -> dict[str, set[str]]:
+    """Numbers (digits or quantifying number words) and named entities (capitalised words that
+    are not sentence-initial, or ALL-CAPS acronyms anywhere), normalised for matching."""
+    numbers = {_norm_number(m) for m in NUM_RE.findall(sentence)}
+    numbers |= {NUMBER_WORDS[m.lower()] for m in CLAIM_NUMWORD_RE.findall(sentence)}
+    entities = set()
+    for i, m in enumerate(WORD_RE.finditer(sentence)):
+        w = re.sub(r"['\u2019]s?$", "", m.group())
+        if len(w) < 2 or w.lower() in STOPWORDS or not w[0].isupper():
+            continue
+        if i == 0 and not w.isupper():
+            continue
+        entities.add(_norm_word(w))
+    return {"numbers": numbers, "entities": entities}
+
+
+def chunk_vocabulary(chunk: str) -> tuple[set[str], set[str]]:
+    """Everything a chunk can vouch for: its numbers (digits and any number word) and all its
+    words in both acronym (lower) and stemmed form."""
+    numbers = {_norm_number(m) for m in NUM_RE.findall(chunk)}
+    numbers |= {NUMBER_WORDS[m.lower()] for m in ANY_NUMWORD_RE.findall(chunk)}
+    words = set()
+    for m in WORD_RE.finditer(chunk):
+        w = re.sub(r"['\u2019]s?$", "", m.group()).lower()
+        words |= {w, _stem(w)}
+    return numbers, words
+
+
+def missing_anchors(sentence: str, chunk: str) -> tuple[list[str], int]:
+    """(anchors of the sentence absent from the chunk, total anchors in the sentence)."""
+    a = anchors(sentence)
+    numbers, words = chunk_vocabulary(chunk)
+    missing = sorted(a["numbers"] - numbers) + sorted(a["entities"] - words)
+    return missing, len(a["numbers"]) + len(a["entities"])
 
 
 @dataclass
@@ -37,6 +101,7 @@ class Verdict:
     score: float               # support of the final (or best-tried) chunk
     cited_score: float         # support of the originally cited chunk
     terms: dict[str, float] = field(default_factory=dict)
+    missing: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -53,8 +118,8 @@ class Report:
 class LexicalScorer:
     name = "lexical"
 
-    def __init__(self, index: InvertedIndex, alpha: float = 0.5):
-        self.index, self.alpha = index, alpha
+    def __init__(self, index: InvertedIndex, alpha: float = 0.5, beta: float = 0.0):
+        self.index, self.alpha, self.beta = index, alpha, beta
         self.proc = index.processor
 
     def _idf(self, term: str) -> float:
@@ -75,7 +140,10 @@ class LexicalScorer:
         contrib = {t: sv[t] * cv[t] for t in sv if t in cv}
         cosine = sum(contrib.values())
         coverage = len(set(s_terms) & set(c_terms)) / len(set(s_terms))
-        return Support(self.alpha * cosine + (1 - self.alpha) * coverage, cosine, coverage, contrib)
+        base = self.alpha * cosine + (1 - self.alpha) * coverage
+        missing, total = missing_anchors(sentence, chunk) if self.beta else ([], 0)
+        penalty = 1 - self.beta * (len(missing) / total) if total else 1.0
+        return Support(base * penalty, cosine, coverage, contrib, missing)
 
 
 class NLIScorer:
@@ -130,12 +198,13 @@ class CiteGuard:
             valid = cited is not None and 1 <= cited <= len(chunks)
             sup = self.scorer.score(sentence, chunks[cited - 1]) if valid else Support(0.0)
             if sup.score >= self.threshold:
-                verdicts.append(Verdict(sentence, cited, cited, SUPPORTED, sup.score, sup.score, sup.terms))
+                verdicts.append(Verdict(sentence, cited, cited, SUPPORTED, sup.score, sup.score, sup.terms, sup.missing))
                 continue
             alt = self.best_alternative(sentence, chunks, exclude=cited if valid else None)
             alt_sup = self.scorer.score(sentence, chunks[alt - 1]) if alt else Support(0.0)
             if alt and alt_sup.score >= self.threshold:
-                verdicts.append(Verdict(sentence, cited, alt, REATTRIBUTED, alt_sup.score, sup.score, alt_sup.terms))
+                verdicts.append(Verdict(sentence, cited, alt, REATTRIBUTED, alt_sup.score, sup.score, alt_sup.terms,
+                                        alt_sup.missing))
             else:
-                verdicts.append(Verdict(sentence, cited, None, UNSUPPORTED, sup.score, sup.score, sup.terms))
+                verdicts.append(Verdict(sentence, cited, None, UNSUPPORTED, sup.score, sup.score, sup.terms, sup.missing))
         return Report(verdicts)

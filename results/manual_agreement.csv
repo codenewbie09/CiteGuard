@@ -1,0 +1,4 @@
+checker,alpha,beta,threshold,labelled,accuracy,cohen_kappa,unsupported_precision,unsupported_recall,unsupported_f1,flagged,human_unsupported
+lexical,0.7500,0.0000,0.1800,70,0.8286,-0.0500,0.0000,0.0000,0.0000,2,10
+lexical+anchors,0.7500,0.2500,0.1800,70,0.8286,-0.0500,0.0000,0.0000,0.0000,2,10
+nli,,,0.0100,70,0.5857,0.0978,0.1935,0.6000,0.2927,31,10

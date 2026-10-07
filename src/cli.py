@@ -48,6 +48,8 @@ def show_verdicts(ans) -> None:
         c = COLOURS[v.status]
         cite = f"[{v.cited}]" if v.status != REATTRIBUTED else f"[{v.cited}] → [{v.final}]"
         terms = ", ".join(f"{k}" for k, _ in sorted(v.terms.items(), key=lambda x: -x[1])[:6]) or "—"
+        if v.missing:
+            terms += f"\n[red]missing: {escape(', '.join(v.missing))}[/]"
         score = f"{v.score:.3f}" if v.status != REATTRIBUTED else f"{v.cited_score:.3f} → {v.score:.3f}"
         t.add_row(escape(v.sentence), escape(cite), f"[{c}]{v.status}[/]", score, terms)
     console.print(t)

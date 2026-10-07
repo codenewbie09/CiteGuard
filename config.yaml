@@ -37,6 +37,7 @@ generation:
 
 citeguard:
   alpha: 0.75                # support = alpha*cosine + (1-alpha)*coverage (dev-tuned: results/citeguard_alpha_dev.csv)
+  beta: 0.25                 # anchor penalty: support *= 1 - beta * missing-anchor fraction (dev-tuned)
   threshold: 0.18            # dev-tuned by `src.eval citeguard`
   nli_model: cross-encoder/nli-deberta-v3-small
   nli_threshold: 0.01        # dev-tuned; entailment probs are tiny on long paraphrased chunks
@@ -47,6 +48,7 @@ experiment:
   retriever: hybrid          # retriever used to fetch chunks for generated answers
   n_dev_answers: 30          # dev answers for tuning alpha / thresholds
   alphas: [0.0, 0.25, 0.5, 0.75, 1.0]
+  betas: [0.0, 0.25, 0.5, 0.75, 1.0]
   w_title_grid: [0.0, 0.1, 0.2, 0.3, 0.5]
   rrf_w_dense_grid: [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
   rrf_k_grid: [10, 30, 60, 100]

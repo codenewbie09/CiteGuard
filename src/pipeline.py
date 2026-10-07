@@ -33,7 +33,7 @@ class RAG:
         if nli:
             scorer, thr = NLIScorer(c["nli_model"]), c["nli_threshold"]
         else:
-            scorer, thr = LexicalScorer(self.index, c["alpha"]), c["threshold"]
+            scorer, thr = LexicalScorer(self.index, c["alpha"], c.get("beta", 0.0)), c["threshold"]
         self.guard = CiteGuard(scorer, self.index, thr, r["bm25_k1"], r["bm25_b"])
 
     def retrieve(self, question: str, k: int | None = None, explain: bool = False) -> list[Hit]:

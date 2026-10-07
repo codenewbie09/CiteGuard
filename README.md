@@ -82,7 +82,7 @@ FiQA has **no titles** (all 57,638 are empty), so the title zone holds each pass
 | dense retrieval, (weighted) Reciprocal Rank Fusion | `src/dense.py` |
 | significance: paired randomisation test | `src/metrics.py`, `src/eval.py` (`significance`) |
 | P@k, Recall@k, nDCG@k, MRR@k | `src/metrics.py` |
-| CiteGuard support = α·tf-idf cosine + (1−α)·term coverage; BM25 re-attribution | `src/citeguard.py` |
+| CiteGuard support = [α·tf-idf cosine + (1−α)·term coverage] · (1 − β·missing-anchor fraction); BM25 re-attribution | `src/citeguard.py` |
 | experiments | `src/eval.py` |
 
 Every retriever returns `(doc_id, score)` plus, with `explain=True`, a per-term breakdown whose sum is the score
@@ -154,35 +154,56 @@ changes quality, but makes queries **6× faster**, because stop words have the l
 
 ### 3. CiteGuard corruption test — `results/citeguard_*.{csv,png}`
 
-Answers were generated (Groq `openai/gpt-oss-120b`, top-5 from plain-RRF hybrid; they are cached, so later retriever changes do not alter this experiment) for 30 dev and 40 test queries.
-Then 30% of citations were swapped to a different retrieved chunk at random (seeded), so we know
+Answers were generated (Groq `openai/gpt-oss-120b`, top-5 from plain-RRF hybrid; they are cached, so later retriever changes do not alter this experiment)
+for 30 dev and 40 test queries. Then 30% of citations were swapped to a different retrieved chunk at random (seeded), so we know
 exactly which citations are wrong. A checker *flags* a sentence when support(sentence, cited chunk) < τ.
-α and τ were tuned on dev (`citeguard_alpha_dev.csv`: best α = 0.75, τ = 0.18).
 
-| checker (test: 152 sentences, 51 swapped) | precision | recall | F1 | flagged swaps whose original chunk was recovered |
-|---|---|---|---|---|
-| **lexical** (α·cosine + (1−α)·coverage) | **0.87** | 0.67 | **0.76** | **74%** (25/34) |
-| NLI cross-encoder (deberta-v3-small) | 0.49 | 0.80 | 0.61 | 41% (17/41) |
+The **anchor penalty** multiplies lexical support by (1 − β · m), where m is the fraction of the sentence's
+*anchors* that are missing from the cited chunk. Anchors are numbers (digits, or number words that quantify, such as "three-month"),
+plus named entities (capitalised non-initial words and acronyms). α, β and τ were tuned together on dev
+(`citeguard_alpha_dev.csv`, settings saved in `citeguard_tuned.json`).
 
-Flagging everything gives F1 = 0.50. On test, the best lexical threshold would have been 0.22 (F1 0.84).
-The dev-tuned 0.18 lands close to it (`citeguard_threshold_curve.png`). The NLI model's entailment
-probabilities are near zero for most real answer sentences, because the LLM paraphrases and combines
-long chunks, so its dev-tuned threshold collapses to 0.01. Our IR-based support score separates
-right from wrong chunks better.
+| checker (test: 152 sentences, 51 swapped) | α | β | τ | precision | recall | F1 | flagged swaps whose original chunk was recovered |
+|---|---|---|---|---|---|---|---|
+| lexical | 0.75 | 0 | 0.18 | 0.87 | 0.67 | 0.76 | 74% (25/34) |
+| **lexical + anchors** | 0.75 | 0.25 | 0.18 | **0.88** | 0.69 | **0.77** | **74%** (26/35) |
+| NLI cross-encoder (deberta-v3-small) | — | — | 0.01 | 0.49 | 0.80 | 0.61 | 41% (17/41) |
 
-**Caveat.** This test measures *wrong-chunk* detection. With τ = 0.18, 68 of 70 sentences in real
-(uncorrupted) answers are SUPPORTED, so subtle unsupported details inside an otherwise on-topic
-sentence can pass. The manual-labelling step (`make labels` → `make agreement`) measures that case.
+Flagging everything gives F1 = 0.50. The NLI model's entailment probabilities are near zero for most real
+answer sentences, so its dev-tuned threshold collapses to 0.01. Anchors add one detection (+0.014 F1).
+
+### 4. Manual labels: real answers, no corruption — `results/manual_agreement*.csv`
+
+I labelled 70 sentences from 20 real test answers: 1 if the cited chunk supports the sentence, 0 if not
+(`results/manual_labels.csv`). 10 of the 70 are unsupported. The labels are a held-out test: each checker runs
+with its dev-tuned settings from the corruption experiment.
+
+| checker | unsupported caught | flagged | precision (unsupported) | accuracy | Cohen's κ |
+|---|---|---|---|---|---|
+| lexical | 0 / 10 | 2 | 0.00 | 0.83 | −0.05 |
+| lexical + anchors | 0 / 10 | 2 | 0.00 | 0.83 | −0.05 |
+| NLI | **6 / 10** | 31 | 0.19 | 0.59 | 0.10 |
+
+**What this shows.** The two kinds of checker are good at different jobs:
+* **Wrong-chunk citations** (section 3): the lexical IR checker is clearly better (F1 0.77 vs 0.61), and its
+  BM25 re-attribution recovers the right chunk 74% of the time.
+* **Real unsupported claims** in on-topic sentences: lexical overlap misses all of them. None of the 10
+  contain an invented number or entity, so the anchor penalty cannot fire. They are unsupported *inferences*
+  ("…can result in the loan application being denied", "…would then be treated as taxable income") that reuse
+  the chunk's vocabulary. NLI catches 6/10, but flags 31 of 70 sentences to do it.
+
+A two-stage design follows from this: use the lexical checker to fix citations, then NLI to warn about claims.
+Caveats: 70 sentences, 10 positives, one annotator.
 
 ## What works / what's planned
 
 Works: everything in the pipeline above, end to end in the CLI and the Streamlit page; all experiments
-write CSV + PNG to `results/`; 34 unit tests, including lnc.ltc and BM25 scores on a toy corpus checked against
+write CSV + PNG to `results/`; 38 unit tests, including lnc.ltc and BM25 scores on a toy corpus checked against
 hand calculation (`tests/test_sparse.py`).
 
 Planned / not done yet:
-* Manual labels: `results/manual_labels.csv` has 70 sentences from 20 real answers, ready to label. Agreement (accuracy, Cohen's κ) is computed by `make agreement`.
-* A sentence-level support score that also penalises unsupported numbers and entities (the main miss above).
+* Two-stage verification: lexical check + re-attribution first, then NLI on the re-attributed chunk, with the NLI threshold tuned for precision.
+* More labelled sentences and a second annotator (inter-annotator κ) before trusting the agreement numbers.
 * BM25F over the zones, instead of applying zone weighting to tf-idf only.
 
 ## AI use

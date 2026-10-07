@@ -51,3 +51,35 @@ def test_missing_or_bad_citation_goes_to_reattribution(guard):
     v = guard.check([("Dividends are paid to shareholders out of profits.", None),
                      ("Dividends are paid to shareholders out of profits.", 9)], CHUNKS)
     assert [s.final for s in v.sentences] == [3, 3]
+
+
+from src.citeguard import anchors
+
+
+def test_anchors_are_numbers_and_entities():
+    a = anchors("You can take $5,000 from Roth IRAs after 59.5, a three-month rule from the IRS in Canada.")
+    assert a["numbers"] == {"5000", "59.5", "3"}
+    assert a["entities"] == {"roth", "ira", "irs", "canada"}
+
+
+def test_sentence_initial_capital_is_not_an_entity():
+    assert anchors("Dividends are taxed.")["entities"] == set()
+
+
+def test_missing_anchor_lowers_support(guard):
+    chunk = "Index funds charge fees of 0.1% and are sold by Vanguard."
+    plain = LexicalScorer(guard.index, alpha=0.5, beta=0.0)
+    penal = LexicalScorer(guard.index, alpha=0.5, beta=1.0)
+    ok = "Index funds sold by Vanguard charge 0.1% fees."
+    bad = "Index funds sold by Vanguard charge 2% fees."
+    assert penal.score(ok, chunk).score == pytest.approx(plain.score(ok, chunk).score)
+    s_plain, s_pen = plain.score(bad, chunk), penal.score(bad, chunk)
+    assert s_pen.missing == ["2"]
+    # 1 of 2 anchors (2, vanguard) missing → support scaled by (1 - 1.0 * 1/2)
+    assert s_pen.score == pytest.approx(s_plain.score * (1 - 1 / 2))
+
+
+def test_number_words_match_digits(guard):
+    s = LexicalScorer(guard.index, alpha=0.5, beta=1.0).score(
+        "The penalty is three months of interest.", "Early withdrawal costs 3 months interest.")
+    assert s.missing == []

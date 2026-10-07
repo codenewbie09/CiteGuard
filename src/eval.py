@@ -317,20 +317,27 @@ def run_citeguard(cfg, full: bool, nli: bool = True) -> pd.DataFrame:
                   f"test: {len(test)} sentences ({sum(test_truth)} corrupted)")
     idx = get_index(cfg, full)
 
-    # 1. tune alpha and threshold on dev
-    alpha_rows = []
-    for a in e["alphas"]:
-        sc = support_scores(LexicalScorer(idx, a), dev)
-        t = best_threshold(sc, dev_truth)
-        alpha_rows.append({"alpha": a, "best_threshold": t, "dev_f1": prf([s < t for s in sc], dev_truth)[2]})
-    alpha_df = pd.DataFrame(alpha_rows)
+    # 1. tune alpha, beta and threshold on dev (beta = 0 is the plain lexical checker)
+    grid = []
+    for b in e["betas"]:
+        for a in e["alphas"]:
+            sc = support_scores(LexicalScorer(idx, a, b), dev)
+            t = best_threshold(sc, dev_truth)
+            grid.append({"alpha": a, "beta": b, "best_threshold": t, "dev_f1": prf([s < t for s in sc], dev_truth)[2]})
+    alpha_df = pd.DataFrame(grid)
     alpha_df.to_csv(results_dir() / "citeguard_alpha_dev.csv", index=False, float_format="%.4f")
-    best = alpha_df.loc[alpha_df.dev_f1.idxmax()]
-    alpha, lex_t = float(best.alpha), float(best.best_threshold)
-    checkers = {"lexical": (LexicalScorer(idx, alpha), lex_t)}
+    plain = alpha_df[alpha_df.beta == 0].sort_values("dev_f1", ascending=False).iloc[0]
+    anch = alpha_df[alpha_df.beta > 0].sort_values("dev_f1", ascending=False).iloc[0]
+    checkers = {
+        "lexical": (LexicalScorer(idx, plain.alpha, 0.0), float(plain.best_threshold)),
+        "lexical+anchors": (LexicalScorer(idx, anch.alpha, anch.beta), float(anch.best_threshold)),
+    }
     if nli:
         nli_scorer = NLIScorer(c["nli_model"])
         checkers["nli"] = (nli_scorer, best_threshold(support_scores(nli_scorer, dev), dev_truth))
+    tuned = {n: {"alpha": getattr(sc, "alpha", None), "beta": getattr(sc, "beta", None), "threshold": t}
+             for n, (sc, t) in checkers.items()}
+    (results_dir() / "citeguard_tuned.json").write_text(json.dumps(tuned, indent=1))
 
     # 2. evaluate on test with the dev-tuned settings
     rows, curves, per_sentence = [], {}, pd.DataFrame(
@@ -342,7 +349,8 @@ def run_citeguard(cfg, full: bool, nli: bool = True) -> pd.DataFrame:
         p, r, f = prf([s < t for s in sc], test_truth)
         curves[name] = sweep(sc, test_truth)
         rec = recovery(CiteGuard(scorer, idx, t, cfg["retrieval"]["bm25_k1"], cfg["retrieval"]["bm25_b"]), test)
-        rows.append({"checker": name, "alpha": alpha if name == "lexical" else None, "threshold (dev-tuned)": t,
+        rows.append({"checker": name, "alpha": getattr(scorer, "alpha", None), "beta": getattr(scorer, "beta", None),
+                     "threshold (dev-tuned)": t,
                      "precision": p, "recall": r, "f1": f, **rec})
     df = pd.DataFrame(rows).set_index("checker")
     df.to_csv(results_dir() / "citeguard_corruption.csv", float_format="%.4f")
@@ -365,7 +373,8 @@ def run_citeguard(cfg, full: bool, nli: bool = True) -> pd.DataFrame:
     plt.tight_layout()
     plt.savefig(results_dir() / "citeguard_threshold_curve.png", dpi=150)
     plt.close()
-    show(alpha_df.set_index("alpha"), "lexical alpha tuning on dev")
+    show(alpha_df.sort_values("dev_f1", ascending=False).head(8).set_index("alpha"),
+         "lexical alpha/beta tuning on dev (top 8)")
     show(df, "CiteGuard corruption test (test split, dev-tuned settings)")
     return df
 
@@ -396,25 +405,50 @@ def dump_labels(cfg, full: bool, force: bool = False) -> None:
                   "the sentence) or 0 (it does not), then run: python -m src.eval agreement")
 
 
-def agreement(cfg) -> dict:
+def agreement(cfg, nli: bool = True) -> pd.DataFrame:
+    """Agreement between human labels and each checker. Each checker is re-run on the labelled
+    (sentence, cited chunk) pairs with its dev-tuned settings (results/citeguard_tuned.json),
+    so the labels are a held-out test and are never used for tuning."""
     df = pd.read_csv(results_dir() / LABELS)
     df = df[df.human_label.notna() & (df.human_label.astype(str).str.strip() != "")]
     if df.empty:
         raise SystemExit("no human labels filled in yet")
     human = df.human_label.astype(int).astype(bool).tolist()
-    machine = (df.citeguard_status == SUPPORTED).tolist()
-    n = len(human)
-    po = sum(h == m for h, m in zip(human, machine)) / n
-    ph, pm = sum(human) / n, sum(machine) / n
-    pe = ph * pm + (1 - ph) * (1 - pm)
-    kappa = (po - pe) / (1 - pe) if pe < 1 else 1.0
-    # "positive" = unsupported, the thing CiteGuard is meant to catch
-    p, r, f = prf([not m for m in machine], [not h for h in human])
-    res = {"labelled": n, "accuracy": po, "cohen_kappa": kappa, "unsupported_precision": p,
-           "unsupported_recall": r, "unsupported_f1": f, "human_supported_rate": ph}
-    pd.DataFrame([res]).to_csv(results_dir() / "manual_agreement.csv", index=False, float_format="%.4f")
-    show(pd.DataFrame([res], index=["citeguard vs human"]), "manual agreement")
-    return res
+    tuned_path = results_dir() / "citeguard_tuned.json"
+    c = cfg["citeguard"]
+    tuned = json.loads(tuned_path.read_text()) if tuned_path.exists() else {
+        "lexical": {"alpha": c["alpha"], "beta": c.get("beta", 0.0), "threshold": c["threshold"]}}
+    idx = get_index(cfg, True)
+    pairs = [(s, ch if isinstance(ch, str) else "") for s, ch in zip(df.sentence, df.cited_chunk)]
+    rows, verdicts = [], {}
+    for name, p in tuned.items():
+        if name == "nli":
+            if not nli:
+                continue
+            scores = NLIScorer(c["nli_model"]).scores(pairs)
+        else:
+            scorer = LexicalScorer(idx, p["alpha"], p["beta"])
+            scores = [scorer.score(s, ch).score for s, ch in pairs]
+        machine = [x >= p["threshold"] for x in scores]
+        verdicts[name] = machine
+        n = len(human)
+        po = sum(h == m for h, m in zip(human, machine)) / n
+        ph, pm = sum(human) / n, sum(machine) / n
+        pe = ph * pm + (1 - ph) * (1 - pm)
+        kappa = (po - pe) / (1 - pe) if pe < 1 else 1.0
+        # "positive" = unsupported, the thing CiteGuard is meant to catch
+        pr, rc, f = prf([not m for m in machine], [not h for h in human])
+        rows.append({"checker": name, **{k: v for k, v in p.items()}, "labelled": n, "accuracy": po,
+                     "cohen_kappa": kappa, "unsupported_precision": pr, "unsupported_recall": rc,
+                     "unsupported_f1": f, "flagged": sum(not m for m in machine), "human_unsupported": n - sum(human)})
+    out = pd.DataFrame(rows).set_index("checker")
+    out.to_csv(results_dir() / "manual_agreement.csv", float_format="%.4f")
+    detail = df[["qid", "sentence", "human_label"]].copy()
+    for name, m in verdicts.items():
+        detail[f"{name}_supported"] = [int(x) for x in m]
+    detail.to_csv(results_dir() / "manual_agreement_detail.csv", index=False)
+    show(out, "agreement with human labels (held-out; settings tuned on dev corruption set)")
+    return out
 
 
 def main():
