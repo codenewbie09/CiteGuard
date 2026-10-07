@@ -41,7 +41,7 @@ make test                       # unit tests (toy corpus, hand-verified scores)
 | ask a question | `python -m src.cli ask "Are Roth IRA withdrawals taxed?" --retriever hybrid --full --show-postings --show-scores` |
 | verify with NLI instead | add `--nli` |
 | inspect postings / df / idf | `python -m src.cli postings "dividend tax" --full` |
-| retriever comparison | `make eval-retrievers` (`FULL=` for the 5k sample) |
+| retriever comparison | `make eval-retrievers` (`FULL=` for the 5k sample; add `--n-queries 648` to `src.eval retrievers` for all test queries) |
 | stemming / stop-word ablation | `make eval-ablation` |
 | tune zone weights on dev | `make eval-zones` |
 | tune weighted RRF on dev | `make eval-rrf` |
@@ -110,13 +110,35 @@ Anything tuned (zone weight, α, thresholds) was tuned on the **dev** split only
 * BM25's length normalisation and saturating tf beat lnc.ltc by +0.07 nDCG@10.
 * Champion lists are **11.7× faster** than the full tf-idf scan but lose 0.10 Recall@100: the classic speed/quality trade-off.
 * Zones: the dev sweep (`results/zones_dev_full.csv`) picked w_title = 0.1 (+0.016 nDCG@10 on dev). On test it is neutral (MRR +0.013, nDCG ±0), as expected for a "title" that duplicates the body (ADR 0002).
-* **Hybrid vs dense.** Plain RRF is *below* dense (nDCG@10 −0.024), because equal weights let the much weaker BM25 run
-  pull the dense ranking down. Weighted RRF, `score(d) = (1−w)/(k+rank_bm25) + w/(k+rank_dense)`, was tuned on 100 dev
-  queries (`results/rrf_dev_full.csv`: k=10, w_dense=0.6, dev nDCG@10 0.435 vs 0.388 for dense alone). On test it
-  beats dense on P@5, P@10, Recall@100 and nDCG@10 (+0.010), but trails on MRR@10 (−0.008). **None of these test
-  differences is significant.** In a paired randomisation test (`results/significance_full.csv`), nDCG@10 gives
-  p = 0.44 (49 wins, 103 ties, 48 losses) and P@10 gives p = 0.05. Honest reading: weighted fusion removes plain
-  RRF's penalty and is at least as good as dense, but 200 queries cannot separate the two.
+* **Hybrid vs dense.** Plain RRF is *below* dense, because equal weights let the much weaker BM25 run pull the
+  dense ranking down. Weighted RRF, `score(d) = (1−w)/(k+rank_bm25) + w/(k+rank_dense)`, was tuned on 100 dev
+  queries (`results/rrf_dev_full.csv`: k=10, w_dense=0.6). On the 200-query sample above, its +0.010 nDCG@10 over
+  dense is not significant (p = 0.44). On **all 648 test queries** it is, as shown below.
+
+#### All 648 FiQA test queries — `results/retrievers_full_q648.csv`, `results/significance_full_q648.csv`
+
+| retriever | P@5 | P@10 | Recall@100 | nDCG@10 | MRR@10 |
+|---|---|---|---|---|---|
+| tf-idf | 0.078 | 0.053 | 0.519 | 0.178 | 0.212 |
+| tf-idf + zones | 0.078 | 0.055 | 0.522 | 0.182 | 0.220 |
+| tf-idf + champion lists | 0.058 | 0.040 | 0.385 | 0.136 | 0.158 |
+| BM25 | 0.109 | 0.069 | 0.559 | 0.252 | 0.311 |
+| dense | 0.168 | 0.105 | 0.706 | 0.369 | 0.445 |
+| hybrid, plain RRF | 0.160 | 0.101 | 0.704 | 0.364 | 0.439 |
+| **hybrid, weighted RRF** | **0.174** | **0.109** | **0.713** | **0.387** | **0.462** |
+
+Paired randomisation test, weighted hybrid vs dense (two-sided, 10k sign flips):
+
+| metric | mean difference | wins / ties / losses | p |
+|---|---|---|---|
+| nDCG@10 | +0.019 | 172 / 334 / 142 | **0.003** |
+| P@10 | +0.005 | 64 / 545 / 39 | **0.008** |
+| MRR@10 | +0.017 | 121 / 417 / 110 | 0.076 |
+| Recall@100 | +0.007 | 50 / 548 / 50 | 0.33 |
+
+Weighted fusion significantly improves early precision over dense (nDCG@10, P@10). Recall@100 is unchanged:
+fusion reorders the top of the list but finds few new relevant documents. Plain RRF is not significantly
+different from dense (nDCG@10 p = 0.58). The weights were tuned on dev; the test queries were never used for tuning.
 
 ### 2. Ablation — `results/ablation_full.{csv,png}`
 
@@ -160,7 +182,6 @@ hand calculation (`tests/test_sparse.py`).
 
 Planned / not done yet:
 * Manual labels: `results/manual_labels.csv` has 70 sentences from 20 real answers, ready to label. Agreement (accuracy, Cohen's κ) is computed by `make agreement`.
-* More eval queries (all 648 test queries) to tell whether weighted hybrid really beats dense.
 * A sentence-level support score that also penalises unsupported numbers and entities (the main miss above).
 * BM25F over the zones, instead of applying zone weighting to tf-idf only.
 

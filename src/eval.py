@@ -89,10 +89,12 @@ def bar_chart(df: pd.DataFrame, title: str, out) -> None:
     plt.close()
 
 
-def run_retrievers(cfg, full: bool, names: list[str]) -> pd.DataFrame:
+def run_retrievers(cfg, full: bool, names: list[str], n_queries: int | None = None) -> pd.DataFrame:
     queries, qrels = eval_queries(cfg)
     idx = get_index(cfg, full)
     mode = "full" if full else "sample"
+    if n_queries:
+        mode += f"_q{len(queries)}"
     rows, per_query = {}, {}
     for name in names:
         console.print(f"[bold]{name}[/] on {len(queries)} test queries ({mode}, N={idx.N:,})")
@@ -420,12 +422,16 @@ def main():
     ap.add_argument("experiment", choices=["retrievers", "ablation", "zones", "rrf", "citeguard", "labels", "agreement"])
     ap.add_argument("--full", action="store_true")
     ap.add_argument("--only", nargs="*", default=None)
+    ap.add_argument("--n-queries", type=int, default=None,
+                    help="retrievers: evaluate on this many test queries (outputs get a _q<N> suffix)")
     ap.add_argument("--no-nli", action="store_true", help="citeguard: skip the NLI checker")
     ap.add_argument("--force", action="store_true", help="labels: overwrite an existing labels file")
     args = ap.parse_args()
     cfg = load_config()
     if args.experiment == "retrievers":
-        run_retrievers(cfg, args.full, args.only or SPARSE)
+        if args.n_queries:   # in-memory only: the sample corpus is still built from the configured count
+            cfg["data"]["n_eval_queries"] = args.n_queries
+        run_retrievers(cfg, args.full, args.only or SPARSE, args.n_queries)
     elif args.experiment == "ablation":
         run_ablation(cfg, args.full)
     elif args.experiment == "zones":

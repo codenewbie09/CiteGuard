@@ -1,0 +1,9 @@
+comparison,metric,mean_diff,wins,ties,losses,p_value
+hybrid vs dense,nDCG@10,0.0186,172,334,142,0.0029
+hybrid vs dense,MRR@10,0.0173,121,417,110,0.0760
+hybrid vs dense,P@10,0.0045,64,545,39,0.0080
+hybrid vs dense,Recall@100,0.0073,50,548,50,0.3325
+hybrid-equal vs dense,nDCG@10,-0.0049,184,275,189,0.5839
+hybrid-equal vs dense,MRR@10,-0.0065,144,363,141,0.6102
+hybrid-equal vs dense,P@10,-0.0032,87,464,97,0.2257
+hybrid-equal vs dense,Recall@100,-0.0023,55,523,70,0.7836
