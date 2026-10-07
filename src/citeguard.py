@@ -86,7 +86,7 @@ class NLIScorer:
     def __init__(self, model_name: str = "cross-encoder/nli-deberta-v3-small"):
         from sentence_transformers import CrossEncoder
 
-        self.model = CrossEncoder(model_name)
+        self.model = CrossEncoder(model_name, max_length=512)   # FiQA chunks can exceed the 4 GB GPU at full length
         labels = self.model.model.config.id2label
         self.entail = next(i for i, l in labels.items() if l.lower().startswith("entail"))
 
@@ -94,7 +94,7 @@ class NLIScorer:
         """Batch: pairs of (sentence, chunk) → entailment probabilities."""
         if not pairs:
             return []
-        probs = self.model.predict([(c, s) for s, c in pairs], apply_softmax=True, show_progress_bar=False)
+        probs = self.model.predict([(c, s) for s, c in pairs], apply_softmax=True, batch_size=8, show_progress_bar=False)
         return [float(p[self.entail]) for p in probs]
 
     def score(self, sentence: str, chunk: str) -> Support:

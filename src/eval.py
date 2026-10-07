@@ -2,10 +2,16 @@
 
     python -m src.eval retrievers [--full] [--only bm25 tfidf ...]
     python -m src.eval ablation   [--full]
+    python -m src.eval zones      [--full]     # tune w_title on the dev split
+    python -m src.eval citeguard  [--full]     # corruption test; tunes alpha/threshold on dev
+    python -m src.eval labels                  # dump answers for manual labelling
+    python -m src.eval agreement               # agreement once labels are filled in
 """
 from __future__ import annotations
 
 import argparse
+import json
+import random
 import time
 
 import matplotlib
@@ -17,6 +23,7 @@ from rich.console import Console
 from rich.table import Table
 
 from src.build import get_index
+from src.citeguard import SUPPORTED, CiteGuard, LexicalScorer, NLIScorer
 from src.config import load_config, path
 from src.data import load_qrels, load_queries, query_sample
 from src.metrics import mrr_at_k, ndcg_at_k, precision_at_k, recall_at_k
@@ -119,17 +126,258 @@ def run_ablation(cfg, full: bool) -> pd.DataFrame:
     return df
 
 
+def run_zones(cfg, full: bool) -> pd.DataFrame:
+    """Tune the title-zone weight on dev queries (never test)."""
+    from src.sparse import TfidfRetriever
+
+    queries, qrels = eval_queries(cfg, "dev")
+    idx = get_index(cfg, full)
+    rows = {}
+    for wt in cfg["experiment"]["w_title_grid"]:
+        r = TfidfRetriever(idx, zones=True, w_title=wt, w_body=1 - wt)
+        rows[f"w_title={wt}"] = evaluate(r, queries, qrels, cfg["retrieval"]["top_k"])
+    df = pd.DataFrame(rows).T
+    df.index.name = "zone weights (dev)"
+    df.to_csv(results_dir() / f"zones_dev_{'full' if full else 'sample'}.csv", float_format="%.4f")
+    show(df, "zone-weight tuning on dev")
+    return df
+
+
+# ---------------- CiteGuard corruption experiment ----------------
+
+def corrupt(pairs, n_chunks: int, rate: float, rng: random.Random) -> list[dict]:
+    """Swap each valid citation to a different retrieved chunk with probability `rate`.
+    The original citation is kept as ground truth."""
+    out = []
+    for sentence, cited in pairs:
+        item = {"sentence": sentence, "original": cited, "cited": cited, "corrupted": False}
+        if cited is not None and 1 <= cited <= n_chunks and rng.random() < rate:
+            item["cited"] = rng.choice([c for c in range(1, n_chunks + 1) if c != cited])
+            item["corrupted"] = True
+        out.append(item)
+    return out
+
+
+def prf(pred: list[bool], truth: list[bool]) -> tuple[float, float, float]:
+    tp = sum(p and t for p, t in zip(pred, truth))
+    fp = sum(p and not t for p, t in zip(pred, truth))
+    fn = sum(t and not p for p, t in zip(pred, truth))
+    prec = tp / (tp + fp) if tp + fp else 0.0
+    rec = tp / (tp + fn) if tp + fn else 0.0
+    f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0
+    return prec, rec, f1
+
+
+def generate_answers(cfg, split: str, n: int, full: bool, rag=None) -> list[dict]:
+    """Generate (or load cached) answers for n queries of `split`. Cached in results/ so the
+    experiment reproduces from a fresh clone without an API key."""
+    cache = results_dir() / f"answers_{split}.json"
+    cached = json.loads(cache.read_text()) if cache.exists() else []
+    if len(cached) >= n:
+        return cached[:n]
+    from src.generate import parse_answer
+    from src.pipeline import RAG
+
+    rag = rag or RAG(cfg, full=full, retriever=cfg["experiment"]["retriever"])
+    queries = load_queries(cfg)
+    done = {a["qid"] for a in cached}
+    for qid in query_sample(cfg, split, max(n, cfg["data"]["n_dev_queries"])):
+        if len(cached) >= n:
+            break
+        if qid in done:
+            continue
+        hits = rag.retrieve(queries[qid])
+        chunks = [rag.corpus[h.doc_id]["body"] for h in hits]
+        raw = rag.generate(queries[qid], chunks)
+        cached.append({"qid": qid, "question": queries[qid], "doc_ids": [h.doc_id for h in hits],
+                       "chunks": chunks, "raw": raw, "pairs": parse_answer(raw)})
+        console.print(f"  {split} {len(cached)}/{n}: {len(cached[-1]['pairs'])} sentences — {queries[qid][:60]}")
+        cache.write_text(json.dumps(cached, indent=1))
+    return cached
+
+
+def corrupted_items(cfg, answers) -> list[dict]:
+    rng = random.Random(cfg["seed"])
+    items = []
+    for a in answers:
+        for it in corrupt(a["pairs"], len(a["chunks"]), cfg["citeguard"]["corruption_rate"], rng):
+            if it["original"] is not None:          # uncited sentences have no ground truth
+                items.append({**it, "qid": a["qid"], "chunks": a["chunks"]})
+    return items
+
+
+def support_scores(scorer, items) -> list[float]:
+    pairs = [(it["sentence"], it["chunks"][it["cited"] - 1]) for it in items]
+    if hasattr(scorer, "scores"):
+        return scorer.scores(pairs)
+    return [scorer.score(s, c).score for s, c in pairs]
+
+
+THRESHOLDS = [round(t * 0.01, 2) for t in range(0, 101)]
+
+
+def sweep(scores, truth) -> pd.DataFrame:
+    rows = []
+    for t in THRESHOLDS:
+        p, r, f = prf([s < t for s in scores], truth)
+        rows.append({"threshold": t, "precision": p, "recall": r, "f1": f})
+    return pd.DataFrame(rows)
+
+
+def best_threshold(scores, truth) -> float:
+    curve = sweep(scores, truth)
+    return float(curve.loc[curve.f1.idxmax(), "threshold"])
+
+
+def recovery(guard: CiteGuard, items) -> dict:
+    """Run full CiteGuard on corrupted citations; how often is the original chunk recovered?"""
+    flagged = recovered = 0
+    corrupted = [it for it in items if it["corrupted"]]
+    for it in corrupted:
+        v = guard.check([(it["sentence"], it["cited"])], it["chunks"]).sentences[0]
+        if v.status != SUPPORTED:
+            flagged += 1
+            recovered += v.final == it["original"]
+    return {"corrupted": len(corrupted), "flagged": flagged, "recovered_original": recovered,
+            "recovery_rate_of_flagged": recovered / flagged if flagged else 0.0,
+            "recovery_rate_of_corrupted": recovered / len(corrupted) if corrupted else 0.0}
+
+
+def run_citeguard(cfg, full: bool, nli: bool = True) -> pd.DataFrame:
+    e, c = cfg["experiment"], cfg["citeguard"]
+    from src.pipeline import RAG
+
+    rag = None
+    if not (results_dir() / "answers_test.json").exists() or not (results_dir() / "answers_dev.json").exists():
+        rag = RAG(cfg, full=full, retriever=e["retriever"])
+    dev = corrupted_items(cfg, generate_answers(cfg, "dev", e["n_dev_answers"], full, rag))
+    test = corrupted_items(cfg, generate_answers(cfg, "test", c["n_corruption_queries"], full, rag))
+    dev_truth, test_truth = [i["corrupted"] for i in dev], [i["corrupted"] for i in test]
+    console.print(f"dev: {len(dev)} sentences ({sum(dev_truth)} corrupted); "
+                  f"test: {len(test)} sentences ({sum(test_truth)} corrupted)")
+    idx = get_index(cfg, full)
+
+    # 1. tune alpha and threshold on dev
+    alpha_rows = []
+    for a in e["alphas"]:
+        sc = support_scores(LexicalScorer(idx, a), dev)
+        t = best_threshold(sc, dev_truth)
+        alpha_rows.append({"alpha": a, "best_threshold": t, "dev_f1": prf([s < t for s in sc], dev_truth)[2]})
+    alpha_df = pd.DataFrame(alpha_rows)
+    alpha_df.to_csv(results_dir() / "citeguard_alpha_dev.csv", index=False, float_format="%.4f")
+    best = alpha_df.loc[alpha_df.dev_f1.idxmax()]
+    alpha, lex_t = float(best.alpha), float(best.best_threshold)
+    checkers = {"lexical": (LexicalScorer(idx, alpha), lex_t)}
+    if nli:
+        nli_scorer = NLIScorer(c["nli_model"])
+        checkers["nli"] = (nli_scorer, best_threshold(support_scores(nli_scorer, dev), dev_truth))
+
+    # 2. evaluate on test with the dev-tuned settings
+    rows, curves, per_sentence = [], {}, pd.DataFrame(
+        {"qid": [i["qid"] for i in test], "sentence": [i["sentence"] for i in test],
+         "original": [i["original"] for i in test], "cited": [i["cited"] for i in test], "corrupted": test_truth})
+    for name, (scorer, t) in checkers.items():
+        sc = support_scores(scorer, test)
+        per_sentence[f"{name}_support"] = sc
+        p, r, f = prf([s < t for s in sc], test_truth)
+        curves[name] = sweep(sc, test_truth)
+        rec = recovery(CiteGuard(scorer, idx, t, cfg["retrieval"]["bm25_k1"], cfg["retrieval"]["bm25_b"]), test)
+        rows.append({"checker": name, "alpha": alpha if name == "lexical" else None, "threshold (dev-tuned)": t,
+                     "precision": p, "recall": r, "f1": f, **rec})
+    df = pd.DataFrame(rows).set_index("checker")
+    df.to_csv(results_dir() / "citeguard_corruption.csv", float_format="%.4f")
+    per_sentence.to_csv(results_dir() / "citeguard_sentences_test.csv", index=False, float_format="%.4f")
+    pd.concat({k: v.set_index("threshold") for k, v in curves.items()}, axis=1).to_csv(
+        results_dir() / "citeguard_threshold_curve.csv", float_format="%.4f")
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    for name, curve in curves.items():
+        line, = ax.plot(curve.threshold, curve.f1, label=f"{name} checker")
+        t = checkers[name][1]
+        ax.axvline(t, color=line.get_color(), ls=":", lw=1)
+        ax.annotate(f"dev-tuned {t:.2f}", (t, curve.set_index("threshold").f1.get(t, 0)),
+                    textcoords="offset points", xytext=(5, 8), color=line.get_color(), fontsize=8)
+    ax.set_xlabel("support threshold (flag sentence if support < threshold)")
+    ax.set_ylabel("F1 detecting swapped citations (test)")
+    ax.set_title(f"CiteGuard corruption test — {sum(test_truth)}/{len(test)} citations swapped")
+    ax.set_ylim(0, 1)
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(results_dir() / "citeguard_threshold_curve.png", dpi=150)
+    plt.close()
+    show(alpha_df.set_index("alpha"), "lexical alpha tuning on dev")
+    show(df, "CiteGuard corruption test (test split, dev-tuned settings)")
+    return df
+
+
+# ---------------- manual labelling ----------------
+
+LABELS = "manual_labels.csv"
+
+
+def dump_labels(cfg, full: bool, force: bool = False) -> None:
+    out = results_dir() / LABELS
+    if out.exists() and not force:
+        raise SystemExit(f"{out} exists (it may hold your labels); pass --force to overwrite")
+    answers = generate_answers(cfg, "test", cfg["experiment"]["n_label_answers"], full)
+    idx = get_index(cfg, full)
+    c = cfg["citeguard"]
+    guard = CiteGuard(LexicalScorer(idx, c["alpha"]), idx, c["threshold"])
+    rows = []
+    for a in answers:
+        for n, v in enumerate(guard.check([tuple(p) for p in a["pairs"]], a["chunks"]).sentences, 1):
+            rows.append({"qid": a["qid"], "question": a["question"], "sentence_no": n, "sentence": v.sentence,
+                         "cited": v.cited,
+                         "cited_chunk": a["chunks"][v.cited - 1] if v.cited and v.cited <= len(a["chunks"]) else "",
+                         "citeguard_status": v.status, "support": round(v.cited_score, 4), "final": v.final,
+                         "human_label": ""})
+    pd.DataFrame(rows).to_csv(out, index=False)
+    console.print(f"wrote {len(rows)} sentences to {out}. Fill human_label with 1 (cited chunk supports "
+                  "the sentence) or 0 (it does not), then run: python -m src.eval agreement")
+
+
+def agreement(cfg) -> dict:
+    df = pd.read_csv(results_dir() / LABELS)
+    df = df[df.human_label.notna() & (df.human_label.astype(str).str.strip() != "")]
+    if df.empty:
+        raise SystemExit("no human labels filled in yet")
+    human = df.human_label.astype(int).astype(bool).tolist()
+    machine = (df.citeguard_status == SUPPORTED).tolist()
+    n = len(human)
+    po = sum(h == m for h, m in zip(human, machine)) / n
+    ph, pm = sum(human) / n, sum(machine) / n
+    pe = ph * pm + (1 - ph) * (1 - pm)
+    kappa = (po - pe) / (1 - pe) if pe < 1 else 1.0
+    # "positive" = unsupported, the thing CiteGuard is meant to catch
+    p, r, f = prf([not m for m in machine], [not h for h in human])
+    res = {"labelled": n, "accuracy": po, "cohen_kappa": kappa, "unsupported_precision": p,
+           "unsupported_recall": r, "unsupported_f1": f, "human_supported_rate": ph}
+    pd.DataFrame([res]).to_csv(results_dir() / "manual_agreement.csv", index=False, float_format="%.4f")
+    show(pd.DataFrame([res], index=["citeguard vs human"]), "manual agreement")
+    return res
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("experiment", choices=["retrievers", "ablation"])
+    ap.add_argument("experiment", choices=["retrievers", "ablation", "zones", "citeguard", "labels", "agreement"])
     ap.add_argument("--full", action="store_true")
     ap.add_argument("--only", nargs="*", default=None)
+    ap.add_argument("--no-nli", action="store_true", help="citeguard: skip the NLI checker")
+    ap.add_argument("--force", action="store_true", help="labels: overwrite an existing labels file")
     args = ap.parse_args()
     cfg = load_config()
     if args.experiment == "retrievers":
         run_retrievers(cfg, args.full, args.only or SPARSE)
     elif args.experiment == "ablation":
         run_ablation(cfg, args.full)
+    elif args.experiment == "zones":
+        run_zones(cfg, args.full)
+    elif args.experiment == "citeguard":
+        run_citeguard(cfg, args.full, nli=not args.no_nli)
+    elif args.experiment == "labels":
+        dump_labels(cfg, args.full, args.force)
+    elif args.experiment == "agreement":
+        agreement(cfg)
 
 
 if __name__ == "__main__":

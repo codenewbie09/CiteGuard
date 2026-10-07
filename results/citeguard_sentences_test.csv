@@ -1,0 +1,153 @@
+qid,sentence,original,cited,corrupted,lexical_support,nli_support
+56,"An entrepreneur can engage a self‑employed business owner as a contractor, since self‑employed individuals are able to contract out their services to others while maintaining their own company.",5,5,False,0.3058,0.0405
+56,"The self‑employed is described as someone who essentially owns a job and can be hired by another firm, distinct from a business owner who runs a separate enterprise.",3,4,True,0.1268,0.2749
+588,"Investors may buy a 0% yield bond because they value the certainty of receiving the full principal back on a known date, even though the bond provides no positive return.",2,3,True,0.1539,0.0004
+588,"Even with no yield, the security of a government‑backed bond can be worth the small “cost” of holding cash that otherwise incurs storage and security expenses, making it attractive for risk‑averse investors.",4,4,False,0.2217,0.0077
+588,"If market participants expect overall yields to move further negative, the price of a zero‑yield bond could rise, allowing the holder to sell later at a profit despite the current zero return.",1,1,False,0.3880,0.0060
+588,The fact that a large portion of the world’s bond market now contains negative‑yielding securities demonstrates that investors do find rational reasons to hold bonds that offer no positive yield.,3,3,False,0.4538,0.0180
+603,"Education loans are treated as standard loans that often require the item being financed as collateral, and lenders usually ask for documentation such as a payslip to verify repayment ability.",1,5,True,0.2136,0.0012
+603,"If a borrower cannot provide the required collateral or proof of income, the bank may consider the applicant ineligible and reject the loan.",2,1,True,0.1191,0.0015
+603,"Consequently, not having a payslip that can serve as collateral can result in the education loan application being denied.",1,2,True,0.0559,0.0003
+622,"If you withdraw the CD before its one‑year maturity, you will incur an early‑withdrawal penalty, such as the three‑month penalty described for early pulls.",1,1,False,0.3297,0.2137
+622,"Because of that penalty, it may be better to move the funds to a liquid savings account, which offers a comparable rate without the access restriction.",2,2,False,0.1944,0.0330
+622,"For future deposits, consider using a CD ladder, which staggers maturities every few months so you have periodic access to portions of your money.",2,2,False,0.3571,0.1604
+622,"If you anticipate needing the money soon, keep that portion in a standard savings account rather than locking it in a CD, as the savings account provides immediate access.",4,4,False,0.3634,0.0097
+672,"In double‑entry bookkeeping every transaction is recorded as a debit to one account and a credit to another, with the total debits equaling the total credits.",1,1,False,0.4460,0.0052
+672,"The terms debit and credit describe the operation performed on an account, not the type of account itself, so the same account can be debited at one time and credited at another.",2,1,True,0.3601,0.0045
+672,"Assets are debit accounts, meaning a debit increases an asset balance, while liabilities are credit accounts, meaning a credit increases a liability balance.",1,1,False,0.4688,0.0030
+672,"When an account’s balance is positive it is said to be “in credit”, and when it shows a net amount owed it is “in debit” according to standard dictionary definitions.",4,5,True,0.2404,0.1078
+766,The borrower remains liable for the full amount of the loan even after the property is foreclosed and sold.,2,2,False,0.2990,0.0006
+766,"If the foreclosure sale does not cover the outstanding principal, interest, and fees, the remaining deficiency is still the ex‑homeowner’s responsibility.",5,3,True,0.1090,0.0033
+766,"Only a bankruptcy filing can potentially eliminate that deficiency, but otherwise the debt persists.",2,5,True,0.1820,0.0019
+766,"In some cases a lender may choose to forgive the deficiency, which would then be treated as taxable income.",5,3,True,0.0615,0.0012
+810,Opening a US bank account without being physically present is difficult.,1,1,False,0.5515,0.9351
+810,Some banks do permit online account opening that can be managed remotely once set up.,5,5,False,0.3522,0.0192
+810,"Your bank will focus on your tax status, and as a US tax resident you will need to open a US‑resident account and be subject to US tax rules.",2,2,False,0.6060,0.9818
+810,"You will also be required to file US tax returns on the income in the account, and may face double taxation unless a treaty applies.",3,3,False,0.4253,0.1018
+904,"You should create a separate QuickBooks company file for each LLC that holds a property, treating each as its own entity in the system.",1,1,False,0.3751,0.0051
+904,"Keep separate checking accounts, credit cards, and other finances for each LLC, opening them with the LLC’s EIN to preserve the legal protection of the entity.",3,3,False,0.4522,0.4454
+904,"If you want the parent rental company to reflect ownership of the LLCs, record the subsidiary LLCs as assets on the parent’s books, but be aware this adds overhead and cost.",1,1,False,0.3285,0.5869
+904,"Set up a distinct bank account for each LLC and pay yourself from that account based on hours or income, which helps keep expenses and income separate for tax purposes.",4,4,False,0.5546,0.0161
+904,Never mix personal and company assets and maintain proper records to maintain liability protection and any tax benefits.,5,5,False,0.3477,0.0040
+1090,"The monthly payment can be expressed with the standard loan‑payment formula M = P × [J / (1 − (1 + J)^‑N)], where P is the principal, J the monthly interest rate and N the number of months.",4,4,False,0.5394,0.8617
+1090,"When returns are reinvested, the cash‑flow stream is treated as an annuity and the money‑weighted return equation is solved numerically to obtain the monthly rate, which is then converted to a nominal annual rate compounded monthly.",2,2,False,0.5185,0.0244
+1090,"The required number of periods N can be determined with the NPER function or the derived formula for payments, as shown in the loan‑payment discussion.",3,3,False,0.4665,0.0271
+1090,The present value of the reinvested returns can be calculated in Excel using the PV function with the appropriate monthly rate and period count.,5,2,True,0.1082,0.0081
+1090,Applying the solved rate to the annuity formula therefore yields the monthly payment received at any time t.,2,2,False,0.2994,0.0038
+1198,"If an employer incorrectly classifies a worker as an independent contractor, the IRS can reclassify the worker as an employee, making the employer liable for the employment taxes that were not paid.",3,3,False,0.4144,0.0037
+1198,The employer may also face penalties and lose any relief provisions that would have applied to a proper classification.,3,3,False,0.2489,0.0029
+1198,"For the employee, reclassification can mean that the employer must withhold and pay the employer’s share of FICA taxes, which the employee would otherwise have to cover themselves as a contractor.",4,4,False,0.2878,0.0223
+1198,"Additionally, the employee may lose benefits associated with employee status and could be subject to an audit or additional tax liability if the employer’s reclassification was improper.",1,1,False,0.3431,0.0021
+1391,Income from YouTube or Twitch is treated as earnings and is only taxable if it exceeds the costs of producing the content.,5,5,False,0.0788,0.0030
+1391,"Allowable expenses include items such as the purchase price of a computer, video camera, and the cost of broadband connection.",5,5,False,0.7583,0.9933
+1391,"If the revenue from the videos does not surpass these expenses, no tax is due.",5,3,True,0.0546,0.0003
+1670,"Hemp is currently an easy crop to grow but yields lower value than major crops such as canola, oats, or soybeans, and acreage in Canada has been declining due to cost and weak demand.",1,4,True,0.0962,0.0001
+1670,"The primary motivation for Canadian farmers to plant hemp is crop rotation rather than high profitability, indicating limited immediate financial upside.",1,1,False,0.3378,0.1063
+1670,"While legalization of cannabis could change supply and demand dynamics, the impact on hemp distribution channels is uncertain and may not translate into strong investment returns.",2,2,False,0.5554,0.9934
+1670,"Moreover, the author of the evidence does not believe that legalizing cannabis will create a great investing opportunity for existing hemp producers, suggesting caution for investors.",2,3,True,0.0873,0.0009
+1812,"Equity should be divided according to how much each person actually paid into the mortgage and related expenses, so the split reflects each party’s financial contribution.",2,2,False,0.2665,0.0011
+1812,"A formal written partnership agreement prepared by a lawyer should spell out each partner’s ownership share, responsibilities, and an exit strategy to protect both parties.",3,5,True,0.1270,0.0014
+1812,"If you cannot obtain a joint mortgage, the bank will hold only the borrower personally liable, and any side agreement giving the partner a claim to equity does not give them direct rights against the lender.",4,4,False,0.2913,0.0148
+1812,"Using a joint account to track all mortgage payments allows you to reimburse each person’s initial contributions and then split any remaining proceeds 50‑50, or adjust the split based on who paid more toward the mortgage.",5,5,False,0.4142,0.0020
+1812,"Finally, working with a financial professional to set up proper accounting and tax treatment will help you run the property ownership like a simple business and avoid complications later.",3,3,False,0.3281,0.0026
+1815,"An LLC, whether a sole‑proprietor, partnership, corporation or LLC, is eligible to establish a SEP‑IRA.",1,1,False,0.6247,0.9835
+1815,"The SEP contribution may be up to 25 % of compensation, but for self‑employed LLC owners the limit is 20 % of compensation with an overall dollar cap (e.g., $49,000 in 2011 or $50,000 in 2012).",1,1,False,0.5436,0.8592
+1815,"When the LLC owner is self‑employed, the contribution is calculated on business income after subtracting half of the self‑employment tax, limited to 20 % of that income and subject to a maximum (e.g., $45,000 in earlier years).",4,4,False,0.4662,0.0138
+1815,"SEP contributions count toward the aggregate defined‑contribution limit, which is the lesser of $53,000 (or the 2024 equivalent) or 100 % of the participant’s compensation, and must be added to contributions made to any other defined‑contribution plans the LLC maintains.",2,2,False,0.5767,0.9852
+1815,"You may maintain both a SEP‑IRA and other retirement plans, but you must have sufficient business income to fund the SEP contribution.",5,1,True,0.3407,0.0069
+1832,"Warren Buffett and Charlie Munger stress that the only thing they read is financial statements, which is essential for a buy‑and‑hold approach suited to long‑term small investors.",2,2,False,0.6604,0.0013
+1832,"They recommend that small investors keep the portfolio simple by placing about 10 % of cash in short‑term government bonds and the remaining 90 % in a very low‑cost S&P 500 index fund, such as Vanguard’s.",5,5,False,0.4612,0.0352
+1832,"Reading Buffett’s annual letters to shareholders is also advised, as it teaches how to think about businesses beyond financial modelling.",4,3,True,0.1964,0.0001
+1832,"For further guidance, studying Buffett’s collected essays provides insight into how companies generate value and his overall investment philosophy, which is valuable for individual investors.",3,5,True,0.1835,0.0007
+1915,"VAT is charged by the seller only if they are VAT‑registered, and the buyer’s status does not affect whether VAT is collected.",1,1,False,0.7640,0.9910
+1915,"If the seller failed to include VAT on the invoice, the tax was never collected and there is no amount owed to the seller for that VAT.",4,4,False,0.4174,0.0712
+1915,"VAT must be paid to the tax authority, not to the supplier, so you are not required to pay the company for VAT they did not charge.",5,5,False,0.4151,0.0021
+1920,"If you have paid interest on qualified student loans, you can deduct up to $2,500 as an adjustment to income provided your MAGI is below $60,000 and you are not filing Married Filing Separately.",1,3,True,0.1394,0.0028
+1920,"To claim education credits for qualified tuition and related expenses, the expenses must be paid by you, your spouse, or a dependent; payments made directly to the school by a third party are treated as if you paid them, but you cannot claim expenses for someone else unless they qualify as your dependent.",4,4,False,0.5120,0.0115
+1920,"Even if you are not required to file based on income, filing a return can allow you to receive a refund of any withheld tax and to claim student tax credits that may result in a refund.",3,3,False,0.4222,0.0110
+1920,"Be sure to file Form 1040 by the annual deadline (typically April 15, with extensions as announced) and consider using the IRS Free File program if your income is low.",3,3,False,0.3810,0.0043
+2108,"Many banks’ online bill‑pay services let you send payments to any company or person, and will mail a paper check if the recipient cannot accept electronic funds.",1,1,False,0.4425,0.4498
+2108,"Bill‑pay is typically funded from a checking account, which most banks support for these transactions.",2,2,False,0.5121,0.0347
+2108,"Thus you can use the bill‑pay feature of your online checking account to pay taxes, as the tax authority can receive either an electronic transfer or a mailed check.",1,1,False,0.2672,0.0047
+2348,"The arrangement would require the manager to keep half of any profits but also to cover half of any losses, meaning the manager must reserve capital to meet potential loss obligations.",5,5,False,0.3562,0.1589
+2348,"The accounting, legal, and reporting work needed for each small investor would cost more than the returns that could be generated on those modest amounts, forcing managers to charge an administrative fee.",5,4,True,0.0173,0.0075
+2348,"Because of these overheads and the need to comply with SEC regulations, such a structure is only practical when the manager has millions of dollars to manage, which is why hedge funds are limited to wealthy participants.",5,1,True,0.0473,0.0011
+2348,"Although hedge funds and private‑equity partnerships do share gains and losses, they do not provide loss‑insurance and the manager’s own money is also at risk, making the model unsuitable for the average retail investor.",2,2,False,0.3276,0.0081
+2460,"In many Canadian provinces the law sets a minimum notice period, often two weeks, and if an employee quits without giving that notice the employer may sue for the lost revenues associated with the abrupt departure.",4,2,True,0.1254,0.0004
+2460,Ontario case law also allows an employer to sue for provable losses when a resignation does not meet contractual notice requirements.,1,1,False,0.3967,0.0006
+2460,"Beyond legal liability, failing to provide adequate notice can harm professional relationships and damage the employee’s reputation, making future employment opportunities more difficult.",2,2,False,0.1143,0.0004
+2460,"Employers may also react negatively, ranging from indifference to punitive actions, which can further strain the departure process.",3,5,True,0.0836,0.0055
+2460,"In some situations, an employer might terminate the employee immediately, causing loss of benefits such as health insurance or FSA coverage for the remaining notice period.",5,5,False,0.3600,0.0154
+2498,"To calculate tax liability you first identify the applicable tax rate based on turnover, such as the 20 % rate for turnover below £300 000 in the UK.",5,5,False,0.3190,0.6599
+2498,"You then apply that rate to your profit after deducting allowable expenses, which determines the tax due (for example, £450 in the illustration).",5,1,True,0.0000,0.0004
+2498,"In addition to profit tax, you must also consider any sales taxes on gross sales, calculated as a percentage of gross sales before profit is determined.",2,2,False,0.4095,0.0016
+2498,"If the vendor’s turnover is below the £81 000 VAT registration threshold, they do not charge VAT and cannot reclaim VAT on expenses, simplifying the calculation.",4,3,True,0.2164,0.0009
+2498,"Finally, you can check the UK government website or consult your accountant for possible relief options that may reduce the overall tax liability.",5,5,False,0.3308,0.9593
+2648,"Unemployment insurance provides a temporary safety net that replaces a portion of a worker’s previous salary after a layoff, typically between 20 percent and 50 percent of prior earnings, and is intended to cover essential living costs.",2,2,False,0.4626,0.4486
+2648,"To be eligible, claimants must have lost their job through no fault of their own, must have sufficient work history, and must complete a waiting period of one to two weeks before benefits begin.",2,3,True,0.0473,0.0003
+2648,"The benefit amount is calculated after the state verifies the layoff, and employers fund unemployment insurance through payroll taxes that vary by state and by the employer’s claim history.",2,2,False,0.4988,0.3514
+2648,"From a governmental perspective, unemployment insurance also serves as economic stimulus, helping prevent recessions from turning into depressions by keeping consumer spending flowing during periods of high unemployment.",3,3,False,0.5895,0.7560
+2713,"When you need to send money by a physical check, you typically mail the check to the recipient’s address, not to the bank, and the envelope carries the address while the check itself only shows the payee name.",4,4,False,0.5403,0.0049
+2713,"Some banks offer services that generate a check and mail it on your behalf, which can simplify the process compared to writing, stamping, and mailing a check yourself.",1,3,True,0.3046,0.0290
+2713,"If you use your bank’s bill‑pay service, the bank may mail a paper check to the payee and guarantee delivery by a chosen date, and the same rules for cashing and stop‑payment apply as if you had mailed the check yourself.",2,2,False,0.4381,0.0025
+2713,"Many people still mail checks for regular bills, although a growing number prefer online bill‑pay to avoid mailing physical checks.",5,3,True,0.2191,0.0079
+2747,"You need to keep a ledger or other record of your tutoring earnings, including dates, times, student names and amounts, as required by tax authorities.",3,3,False,0.3721,0.0044
+2747,"If any individual pays you more than $600 in a year you must issue a 1099 form and provide the payer with your taxpayer‑identification information such as name, address and Social Security number.",1,1,False,0.5057,0.0130
+2747,"On your U.S. tax return you report the tutoring income as “Other reportable Income” on line 21 of Form 1040, which can be entered via the “Misc Income” section in TurboTax.",2,4,True,0.1587,0.0114
+2747,It is advisable to retain all payment receipts and deposit records to create a clear paper trail in case the tax agency requests proof of income.,5,5,False,0.2691,0.0248
+2749,"You can establish a self‑managed superannuation fund (SMSF) and invest in assets such as shares, cash, term deposits and property, and the fund is even permitted to borrow to help acquire property.",1,1,False,0.4497,0.9704
+2749,"This borrowing ability means an SMSF can be used to purchase an investment property, but the evidence does not describe the SMSF itself functioning as a mortgage‑offset account.",1,1,False,0.1094,0.0041
+2749,An offset account is a separate banking product that reduces the interest charged on a mortgage by offsetting the loan balance with the account balance.,3,3,False,0.1939,0.0016
+2749,"Therefore, while you can set up an SMSF that can borrow for property investment, the evidence does not confirm that the SMSF can directly act as a mortgage offset.",1,4,True,0.0000,0.0009
+2895,A young student should keep an emergency fund in a safe interest‑bearing account to offset any debt and minimize risk.,2,2,False,0.4755,0.0032
+2895,"Because student‑loan interest is tax‑deductible, the cost of the loan may be lower, which can influence whether to invest elsewhere or pay down the loan.",3,4,True,0.1277,0.0003
+2895,"If the student can afford it, paying off the loan quickly reduces long‑term risk and frees up cash for other goals.",5,5,False,0.3810,0.9290
+2895,"For any remaining discretionary money, the student can consider higher‑risk investments, since youth and a safety net allow them to recover from losses.",1,1,False,0.2005,0.0278
+3177,"ETFs trade like stocks and have no front‑end or back‑end load, making them more convenient when moving money between a brokerage account and a mutual fund or when a fund isn’t available in a 401(k) plan.",1,1,False,0.6120,0.4882
+3177,"However, ETF purchases involve a bid/ask spread that does not exist for mutual funds, which are priced once per day at a single net asset value.",2,1,True,0.1854,0.0014
+3177,"In Vanguard’s lineup, the expense ratio of the ETF version can be identical to that of the Admiral share class of the mutual fund, so lower costs are not guaranteed for ETFs.",4,5,True,0.4921,0.0103
+3177,"For investors who need a low minimum investment, ETFs often have a lower entry point than mutual funds, which may require a larger account balance to obtain the same expense ratio.",4,4,False,0.3966,0.0037
+3177,"When comparing specific products, Vanguard’s Admiral S&P 500 index mutual fund has a 0.05% expense ratio, which is lower than the 0.07% expense ratio of the comparable iShares S&P 500 ETF.",5,5,False,0.7996,0.9662
+3369,"Employer matching contributions are essentially free money that you receive simply for participating in the plan, so it makes sense to capture that benefit first.",4,4,False,0.2949,0.0074
+3369,"Once you have contributed enough to receive the full match, any additional contributions are made with after‑tax dollars and do not provide extra “free” value, which many investors prefer to avoid.",4,5,True,0.1966,0.0067
+3369,"For that reason, a common recommendation is to limit personal contributions to the amount needed to obtain the employer’s match and then invest any further savings elsewhere.",4,4,False,0.2707,0.0011
+3512,"It is inappropriate to ask for detailed financial statements if you are not a stockholder or otherwise have no statutory inspection rights, such as an employee without equity ownership.",2,5,True,0.0852,0.0003
+3512,"A request that is overly specific or aggressive can be perceived as prying and may make office life awkward, especially in a young or small startup environment.",2,2,False,0.3080,0.0020
+3512,"If you frame the request vaguely and keep it brief, it is more likely to be seen as professional rather than inappropriate.",2,2,False,0.2293,0.0030
+3512,"Conversely, demanding high‑level or granular financial data before you have any ownership interest can be viewed as an unwelcome intrusion in a startup’s operations.",2,2,False,0.1583,0.0021
+3530,"Mutual funds buy and sell shares according to the policies set out in their prospectus, not according to the individual wishes of each investor, so you cannot direct a fund to avoid a particular stock unless the prospectus explicitly states that restriction.",5,5,False,0.4004,0.1853
+3530,"To keep a specific stock out of your holdings, you must select a mutual fund whose prospectus explicitly excludes that company or sector; otherwise the manager may include it in the portfolio.",5,5,False,0.2788,0.1779
+3530,"If no such exclusion is listed, the only way to avoid exposure is to avoid investing in any fund that holds the stock, because you cannot sell your portion of the position within the fund.",2,2,False,0.3409,0.0246
+3530,"Alternatively, you could choose an exchange‑traded fund with a fixed basket that does not contain the unwanted stock, since the ETF’s composition is known and only changes if the underlying index does.",5,5,False,0.3219,0.7285
+3534,Banks and payment processors charge dishonour fees to offset the costs and risks associated with handling failed transactions.,3,3,False,0.1504,0.0009
+3534,"When a transaction is declined, the institution must still allocate resources to investigate and reverse the attempted payment, which incurs operational expenses.",3,3,False,0.1813,0.0009
+3534,"These fees also serve as a source of revenue for issuers, similar to other charges like interest, late fees, and foreign‑transaction fees that fund their business model.",4,4,False,0.2884,0.0109
+3534,"By imposing a penalty, they discourage consumers from repeatedly attempting insufficient‑funds payments, helping protect the financial system’s stability.",4,1,True,0.0000,0.0004
+3534,"Ultimately, dishonour fees help ensure that the costs of processing and the risk of loss are passed back to the party responsible for the failed payment.",3,3,False,0.2460,0.0014
+3625,Scan your paper statements and switch to eStatements whenever possible to reduce paper volume and provider costs.,1,1,False,0.3512,0.9735
+3625,Keep the scanned or electronic copies as long as they are accurate and can be provided during an audit.,2,3,True,0.0000,0.0011
+3625,"Retain original paper documents for at least seven years in case the IRS audits you, especially for items like tax returns and basis records.",5,1,True,0.0665,0.0000
+3625,"You can prune and consolidate older statements, discarding monthly copies after receiving quarterly statements and discarding quarterly statements after the yearly statement arrives.",1,2,True,0.0743,0.2205
+3625,"Choose an organization system—digital or paper—that you are comfortable with, recognizing that detailed upfront organization may not be necessary if you rely on searchable digital files.",3,3,False,0.2595,0.0020
+3682,"Lenders of securities charge interest on the borrowed shares, giving them a direct source of revenue for providing the loan.",4,2,True,0.1772,0.0255
+3682,"The interest rate they apply can differ based on who is borrowing, how many shares are borrowed, and which stock is being shorted, allowing lenders to price the loan according to demand and risk.",4,5,True,0.3189,0.0074
+3682,"If a stock becomes “hard to borrow” because many short sellers have already taken the lender’s shares or the broker lacks sufficient inventory, the lender may refuse to lend additional shares, effectively discriminating based on scarcity and risk.",4,2,True,0.2345,0.0124
+3682,"Because lending can occur over many years, lenders can earn fees and interest that outweigh occasional losses, as illustrated by long‑term cases such as General Motors where lenders profited across decades.",4,4,False,0.3652,0.6261
+3682,"By making shares available for borrowing, lenders also help maintain market liquidity, enabling short sellers to execute trades that would otherwise be impossible without borrowed securities.",2,2,False,0.2430,0.0054
+3683,The Motley Fool is generally regarded as relatively legit and not likely to engage in outright fraud.,2,2,False,0.5832,0.2298
+3683,"Nonetheless, they employ aggressive subscription marketing that some find shameful and potentially exploitative, especially toward older investors.",3,5,True,0.0000,0.0002
+3683,"Their podcasts, such as Motley Fool Money and Market Foolery, are enjoyable and can offer interesting insight, though some content drifts away from pure finance.",4,4,False,0.5941,0.9971
+3683,"While they provide in‑depth content, the high cost of subscriptions and aggressive sales tactics may affect trust for some users.",2,1,True,0.0000,0.0002
+3735,"When you open a short position, Regulation T requires an initial margin of 150% of the short value, meaning the short proceeds must stay in the account and an additional 50% cash must be deposited.",3,3,False,0.5171,0.1717
+3735,"The minimum maintenance margin for a short depends on the stock price: for shares trading under $5 the requirement is 100% of the short market value or $2.50 per share whichever is greater, while for shares $5 or more it is $5 per share or 30% of the short market value whichever is greater.",1,1,False,0.7417,0.0152
+3735,"Many brokerages let you enter a short with only 50% of the cash on hand, effectively allowing you to short twice your cash, but you must later maintain roughly 30% of the short value in the account.",2,2,False,0.3732,0.3441
+3735,"If the equity in the margin account falls below the maintenance requirement, the broker will issue a margin call requiring you to deposit additional funds or cover the short, and failure can leave you owing the broker for the loss.",4,4,False,0.4866,0.0021
+3735,"The proceeds from the short sale are held as collateral and cannot be used for other investments, and you may also incur a stock‑borrow fee that offsets any rebate on those proceeds.",5,1,True,0.0884,0.0022
+3789,"The owner‑occupancy affidavit must be truthful; signing it with the intent to move in later would be mortgage/occupancy fraud, a federal crime punishable by imprisonment and fines.",4,3,True,0.1271,0.0101
+3789,"To purchase another property within a year without violating the affidavit, you can classify the new purchase as a second home or an investment property, which typically requires a larger down payment (20%+) and a higher interest rate.",2,2,False,0.3392,0.0110
+3789,"One strategy is to buy the condo as an investment property, meet the investor‑loan requirements, and later refinance it as a primary residence after you move in.",1,3,True,0.0751,0.0109
+3789,"Alternatively, you could purchase the condo as a primary residence, stay there for at least ten months, then use a two‑month rent‑back period before converting it to a rental, while informing the loan officer of your plan so the loan can be priced appropriately.",1,5,True,0.0275,0.0015
+3789,"In all cases, you should disclose your intentions to the lender up front to avoid penalties and ensure the loan is structured correctly.",2,3,True,0.0308,0.0017
+3791,"In the United States, the phrase “interest rate” on its own most commonly denotes the federal funds rate that the Federal Reserve sets as the benchmark for all other rates.",4,2,True,0.1982,0.0014
+3791,"This benchmark rate also determines the prime lending rate, which is the lowest rate banks charge their most creditworthy borrowers and is often used as the reference point when people talk about rates being “high” or “low”.",2,2,False,0.5570,0.0024
+3791,"Because the federal funds rate (and thus the prime rate) is currently well below long‑term historical averages, commentators can legitimately claim that interest rates are at an all‑time low.",1,2,True,0.2886,0.0009
