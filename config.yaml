@@ -31,7 +31,7 @@ dense:
 
 generation:
   n_chunks: 5
-  max_tokens: 600
+  max_tokens: 1500          # gpt-oss counts reasoning tokens here
   temperature: 0.0
 
 citeguard:
